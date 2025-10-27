@@ -1,0 +1,15 @@
+name = "tactics_generation"
+version = "0.1.0"
+defaultTargets = ["tactics_generation"]
+
+[[lean_lib]]
+name = "TacticsGeneration"
+
+[[lean_exe]]
+name = "tactics_generation"
+root = "Main"
+
+[[require]]
+name = "batteries"
+scope = "leanprover-community"
+
