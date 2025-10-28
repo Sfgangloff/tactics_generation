@@ -1,7 +1,9 @@
 import Batteries
 
 
-/- We try here to recursively feedback the errors to the model in order to arrive at an actual solution.
+/- We try here to recursively feedback the errors to the model in order to arrive
+at an actual solution. Below each, we have noted the number of feedback steps required to solve
+all errors occuring in Test1. WHen possible, the feedback prompt is a simple screenshot.
 -/
 
 open Std
@@ -62,8 +64,6 @@ def isPrime (n : Nat) : Bool :=
 
 def isNonPrime (n : Nat) : Bool :=
   ¬ isPrime n
-
--- Fair, it could go just to the square root as in the python version but reasonable solution.
 
 #guard isNonPrime 2 == false
 #guard isNonPrime 10 == true
@@ -133,7 +133,7 @@ def differByOneBit (a b : Nat) : Bool :=
 
 -- Code 7:
 def wordsAtLeast4 (s : String) : List String :=
-  s.split (· = ' ')
+  s.splitToList (· = ' ')
    |>.filter (fun w => w.length ≥ 4)
    |>.filter (fun w => w ≠ "")   -- remove empty strings (from multiple spaces)
 
