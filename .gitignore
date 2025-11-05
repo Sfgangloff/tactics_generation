@@ -1,1 +1,3 @@
 /.lake
+.venv/
+openai_key.txt

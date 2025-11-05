@@ -1,0 +1,317 @@
+PYTHON CODE 1:
+
+R = 3
+C = 3
+def min_cost(cost, m, n): 
+	tc = [[0 for x in range(C)] for x in range(R)] 
+	tc[0][0] = cost[0][0] 
+	for i in range(1, m+1): 
+		tc[i][0] = tc[i-1][0] + cost[i][0] 
+	for j in range(1, n+1): 
+		tc[0][j] = tc[0][j-1] + cost[0][j] 
+	for i in range(1, m+1): 
+		for j in range(1, n+1): 
+			tc[i][j] = min(tc[i-1][j-1], tc[i-1][j], tc[i][j-1]) + cost[i][j] 
+	return tc[m][n]
+
+LEAN CODE 1:
+
+def Array.modify2d {α : Type} (a : Array (Array α)) (y x : Nat) (f : α → α) :=
+  a.modify y <| fun row => row.modify x f
+
+def Array.set2d? {α : Type} (a : Array (Array α)) (y x : Nat) (value : α) :=
+  a.modify2d y x (fun _ => value)
+
+def List.get2d {α : Type} (l : List (List α)) (y x : Nat) (fallback : α) :=
+  (l.getD y []).getD x fallback
+
+def Array.get2d {α : Type} (a : Array (Array α)) (y x : Nat) (fallback : α) :=
+  (a.getD y #[]).getD x fallback
+
+def minCost (cost : List (List Nat)) (m n : Nat) : Nat := Id.run do
+  let mut tc : Array (Array Nat) :=
+    Array.replicate (m+1) (Array.replicate (n+1) 0)
+  tc := tc.set2d? 0 0 (cost.get2d 0 0 0)
+  for i in [1 : m+1] do
+    tc := tc.set2d? i 0 <| tc.get2d (i-1) 0 0 + cost.get2d i 0 0
+  for j in [1 : n+1] do
+    tc := tc.set2d? 0 j <| tc.get2d 0 (j-1) 0 + cost.get2d 0 j 0
+  for i in [1 : m+1] do
+    for j in [1 : n+1] do
+      tc := tc.set2d? i j <|
+        min (tc.get2d (i-1) (j-1) 0) (
+          min (tc.get2d (i-1) j 0) (tc.get2d i (j-1) 0)
+        ) + cost.get2d i j 0
+  return tc.get2d m n 0
+
+TESTS PYTHON 1:
+
+assert min_cost([[1, 2, 3], [4, 8, 2], [1, 5, 3]], 2, 2) == 8
+assert min_cost([[2, 3, 4], [5, 9, 3], [2, 6, 4]], 2, 2) == 12
+assert min_cost([[3, 4, 5], [6, 10, 4], [3, 7, 5]], 2, 2) == 16
+
+TESTS LEAN 1:
+
+#guard minCost [[1, 2, 3], [4, 8, 2], [1, 5, 3]] 2 2 = 8
+#guard minCost [[2, 3, 4], [5, 9, 3], [2, 6, 4]] 2 2 = 12
+#guard minCost [[3, 4, 5], [6, 10, 4], [3, 7, 5]] 2 2 = 16
+
+PYTHON CODE 2:
+
+def similar_elements(test_tup1, test_tup2):
+  res = tuple(set(test_tup1) & set(test_tup2))
+  return (res) 
+
+LEAN CODE 2:
+
+def similarElements (l1 l2 : List Int) : HashSet Int := Id.run do
+  let s1 := HashSet.ofList l1
+  let s2 := HashSet.ofList l2
+  return s1.filter (fun x => x ∈ s2)
+
+TESTS PYTHON 2:
+
+assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
+assert similar_elements((1, 2, 3, 4),(5, 4, 3, 7)) == (3, 4)
+assert similar_elements((11, 12, 14, 13),(17, 15, 14, 13)) == (13, 14)
+
+TESTS LEAN 2:
+
+#guard similarElements [3, 4, 5, 6] [5, 7, 4, 10] == HashSet.ofList [4, 5]
+#guard similarElements [1, 2, 3, 4] [5, 4, 3, 7] == HashSet.ofList [3, 4]
+#guard similarElements [11, 12, 14, 13] [17, 15, 14, 13] == HashSet.ofList [13, 14]
+
+PYTHON CODE 3:
+
+import math
+def is_not_prime(n):
+    result = False
+    for i in range(2,int(math.sqrt(n)) + 1):
+        if n % i == 0:
+            result = True
+    return result
+
+LEAN CODE 3:
+
+def isNotPrime (n : Nat) : Bool := Id.run do
+  for x in [2 : Nat.sqrt n + 1] do
+    if n % x == 0 then return true
+  return false
+
+TESTS PYTHON 3:
+
+assert is_not_prime(2) == False
+assert is_not_prime(10) == True
+assert is_not_prime(35) == True
+
+TESTS LEAN 3:
+
+#guard isNotPrime 2 == false
+#guard isNotPrime 10 == true
+#guard isNotPrime 35 == true
+#guard isNotPrime 37 == false
+
+PYTHON CODE 4:
+
+import heapq as hq
+def heap_queue_largest(nums,n):
+  largest_nums = hq.nlargest(n, nums)
+  return largest_nums
+
+LEAN CODE 4:
+
+def heapQueueLargest (nums : List Nat) (n : Nat) : List Nat := Id.run do
+  let mut heap := nums.toArray.toBinaryHeap (· < ·)
+  let mut res := #[]
+  for _ in [: n] do
+    match heap.max with
+    | none => break
+    | some x => res := res.push x
+    heap := heap.popMax
+  return res.toList
+
+TESTS PYTHON 4:
+assert heap_queue_largest( [25, 35, 22, 85, 14, 65, 75, 22, 58],3)==[85, 75, 65] 
+assert heap_queue_largest( [25, 35, 22, 85, 14, 65, 75, 22, 58],2)==[85, 75] 
+assert heap_queue_largest( [25, 35, 22, 85, 14, 65, 75, 22, 58],5)==[85, 75, 65, 58, 35]
+
+TESTS LEAN 4:
+#guard heapQueueLargest [25, 35, 22, 85, 14, 65, 75, 22, 58] 3 == [85, 75, 65]
+#guard heapQueueLargest [25, 35, 22, 85, 14, 65, 75, 22, 58] 2 == [85, 75]
+#guard heapQueueLargest [25, 35, 22, 85, 14, 65, 75, 22, 58] 5 == [85, 75, 65, 58, 35]
+
+PYTHON CODE 5:
+
+def count_ways(n): 
+	A = [0] * (n + 1) 
+	B = [0] * (n + 1) 
+	A[0] = 1
+	A[1] = 0
+	B[0] = 0
+	B[1] = 1
+	for i in range(2, n+1): 
+		A[i] = A[i - 2] + 2 * B[i - 1] 
+		B[i] = A[i - 1] + B[i - 2] 
+	return A[n] 
+
+LEAN CODE 5:
+
+def countWays (n : Nat) : Nat := Id.run do
+  let mut A := Array.replicate (n+1) 0
+  let mut B := Array.replicate (n+1) 0
+  A := A.modify 0 (fun _ => 1)
+  A := A.modify 1 (fun _ => 0)
+  B := B.modify 0 (fun _ => 0)
+  B := B.modify 1 (fun _ => 1)
+  for i in [2 : n+1] do
+    A := A.set! i <| A[i-2]! + 2*B[i-1]!
+    B := B.set! i <| A[i-1]! + B[i-2]!
+  return A[n]!
+
+TESTS PYTHON 5:
+
+assert count_ways(2) == 3
+assert count_ways(8) == 153
+assert count_ways(12) == 2131
+
+TESTS LEAN 5:
+
+#guard countWays 2 == 3
+#guard countWays 8 == 153
+#guard countWays 12 == 2131
+
+PYTHON CODE 6:
+
+def is_Power_Of_Two (x): 
+    return x and (not(x & (x - 1))) 
+
+def differ_At_One_Bit_Pos(a,b): 
+    return is_Power_Of_Two(a ^ b)
+
+LEAN CODE 6:
+
+def isPowerOfTwo (x : Nat) : Bool := x != 0 && (x &&& x-1) == 0
+def differAtOneBitPos (a b : Nat) := isPowerOfTwo (a ^^^ b)
+
+TESTS PYTHON 6:
+
+assert differ_At_One_Bit_Pos(13,9) == True
+assert differ_At_One_Bit_Pos(15,8) == False
+assert differ_At_One_Bit_Pos(2,4) == False
+
+TESTS LEAN 6:
+
+#guard differAtOneBitPos 13 9 == true
+#guard differAtOneBitPos 15 8 == false
+#guard differAtOneBitPos 2 4 == false
+
+PYTHON CODE 7:
+
+import re
+def find_char_long(text):
+  return (re.findall(r"\b\w{4,}\b", text))
+
+LEAN CODE 7:
+
+def findLongWords (text : String) : List String :=
+  text.splitOn.filter (fun x => x.length >= 4)
+
+TESTS PYTHON 7:
+
+assert find_char_long('Please move back to stream') == ['Please', 'move', 'back', 'stream']
+assert find_char_long('Jing Eco and Tech') == ['Jing', 'Tech']
+assert find_char_long('Jhingai wulu road Zone 3') == ['Jhingai', 'wulu', 'road', 'Zone']
+
+TESTS LEAN 7:
+
+#guard findLongWords "Please move back to stream" == ["Please", "move", "back", "stream"]
+#guard findLongWords "Jing Eco and Tech" == ["Jing", "Tech"]
+#guard findLongWords "Jhingai wulu road Zone 3" == ["Jhingai", "wulu", "road", "Zone"]
+
+PYTHON CODE 8:
+
+def square_nums(nums):
+ square_nums = list(map(lambda x: x ** 2, nums))
+ return square_nums
+
+LEAN CODE 8:
+
+def squareNums (nums : List Nat) : List Nat := nums.map (fun x => x ^ 2)
+
+TESTS PYTHON 8:
+
+assert square_nums([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])==[1, 4, 9, 16, 25, 36, 49, 64, 81, 100]
+assert square_nums([10,20,30])==([100,400,900])
+assert square_nums([12,15])==([144,225])
+
+TESTS LEAN 8:
+
+#guard squareNums [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] == [1, 4, 9, 16, 25, 36, 49, 64, 81, 100]
+#guard squareNums [10,20,30] == [100,400,900]
+#guard squareNums [12,15] == [144,225]
+
+PYTHON CODE 9:
+
+def find_Rotations(str): 
+    tmp = str + str
+    n = len(str) 
+    for i in range(1,n + 1): 
+        substring = tmp[i: i+n] 
+        if (str == substring): 
+            return i 
+    return n 
+
+LEAN CODE 9:
+
+def findRotations (str : String) : Nat := Id.run do
+  let tmp := str ++ str
+  let n := str.utf8ByteSize
+  for i in [1 : n + 1] do
+    let pos : String.Pos := ⟨i⟩
+    if !pos.isValid str then continue
+    let substring : Substring := {str := tmp, startPos := pos, stopPos := ⟨i+n⟩}
+    if str == substring then return i
+  return n
+
+TESTS PYTHON 9:
+
+assert find_Rotations("aaaa") == 1
+assert find_Rotations("ab") == 2
+assert find_Rotations("abc") == 3
+
+TESTS LEAN 9:
+
+#guard findRotations "aaaa" == 1
+#guard findRotations "ab" == 2
+#guard findRotations "abc" == 3
+
+PYTHON CODE 10:
+
+import heapq
+def small_nnum(list1,n):
+  smallest=heapq.nsmallest(n,list1)
+  return smallest
+
+LEAN CODE 10:
+
+def smallNNum (list1 : List Nat) (n : Nat) : List Nat := Id.run do
+  let mut heap := list1.toArray.toBinaryHeap (· > ·)
+  let mut res := #[]
+  for _ in [: n] do
+    match heap.max with
+    | none => break
+    | some x => res := res.push x
+    heap := heap.popMax
+  return res.toList
+
+TESTS PYTHON 10:
+
+assert small_nnum([10, 20, 50, 70, 90, 20, 50, 40, 60, 80, 100],2)==[10,20]
+assert small_nnum([10, 20, 50, 70, 90, 20, 50, 40, 60, 80, 100],5)==[10,20,20,40,50]
+assert small_nnum([10, 20, 50, 70, 90, 20, 50, 40, 60, 80, 100],3)==[10,20,20]
+
+TESTS LEAN 10:
+
+#guard smallNNum [10, 20, 50, 70, 90, 20, 50, 40, 60, 80, 100] 2 == [10,20]
+#guard smallNNum [10, 20, 50, 70, 90, 20, 50, 40, 60, 80, 100] 5 == [10,20,20,40,50]
+#guard smallNNum [10, 20, 50, 70, 90, 20, 50, 40, 60, 80, 100] 3 == [10,20,20]
