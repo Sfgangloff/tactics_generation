@@ -45,12 +45,17 @@ class LeanSearcher:
     """
     Searches Lean function index and ranks results.
 
-    Uses multiple scoring factors:
-    - Exact name matches
-    - Partial name matches
-    - Signature matches
-    - Docstring matches
-    - Type relevance (prefer functions over theorems for implementation tasks)
+    Uses multiple scoring factors (optimized for natural language search):
+    - Exact name matches (10.0)
+    - Partial name matches (5.0)
+    - Name part matches (4.0)
+    - AI description matches (3.0) ← High weight for semantic understanding
+    - Signature matches (2.0)
+    - Docstring matches (1.0)
+    - Type relevance bonus (1.2x multiplier for preferred types)
+
+    AI descriptions are weighted 3x higher than docstrings because they're
+    specifically generated for natural language search.
     """
 
     def __init__(self, index_path: Optional[Path] = None, use_enriched: bool = True):
@@ -169,9 +174,9 @@ class LeanSearcher:
                 keyword_score += 1.0
                 keyword_reasons.append(f"docstring contains: '{keyword}'")
 
-            # Description contains keyword (similar weight to docstring)
+            # Description contains keyword (higher weight - AI-generated for search)
             if keyword in description_lower:
-                keyword_score += 1.0
+                keyword_score += 3.0
                 keyword_reasons.append(f"description contains: '{keyword}'")
 
             # Add keyword score to total

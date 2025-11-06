@@ -242,28 +242,34 @@ Build an intelligent search agent that takes natural language task descriptions 
 
 **Purpose:** Extract keywords and concepts from natural language task
 
-**LLM Prompt Template:** `prompts/search_task_analyzer.txt`
+**LLM Prompt Template:** `prompts/task_analyzer_system.txt`
+
+**Key Features:**
+- Extracts both full terms ("multiply") and abbreviated forms ("mul")
+- Identifies Lean-specific terminology (e.g., "Nat" for natural numbers)
+- Captures 3-10 keywords per query for semantic richness
 
 **Example Input:**
 ```
-"create a function which gives the area of a square in lean using imperative programming"
+"multiply two natural numbers"
 ```
 
 **Example Output:**
 ```json
 {
-  "keywords": ["area", "square", "multiplication", "imperative", "function"],
-  "concepts": ["arithmetic", "geometry", "imperative programming"],
-  "expected_types": ["Nat", "Int", "Float"],
-  "operations": ["multiply", "power"],
-  "paradigm": "imperative"
+  "keywords": ["mul", "multiply", "product", "times", "multiplication", "natural", "number", "arithmetic"],
+  "types": ["Nat", "Int"],
+  "operations": ["multiply", "multiplication"],
+  "paradigm": null,
+  "domain": "arithmetic"
 }
 ```
 
 **Key Operations:**
 - `analyze_task(task_description)` → Extracts structured information
-- Uses OpenAI API with structured output
+- Uses OpenAI API (gpt-4o-mini by default) with structured JSON output
 - Results are cached in `llm_cache` table
+- Hybrid approach: Natural language terms + Lean abbreviated forms
 
 ---
 
@@ -277,15 +283,25 @@ Build an intelligent search agent that takes natural language task descriptions 
 3. **Docstring contains keyword** (semantic relevance)
 4. **Type signature contains keyword** (type-based)
 
-**Ranking Factors:**
-- Match type (exact > partial > semantic)
-- Number of keyword matches
-- Definition popularity (from search_results table)
-- User feedback (was_helpful scores)
+**Ranking Factors (Optimized for Natural Language):**
+- **AI description matches (3.0)** - Highest semantic weight
+- **Exact name matches (10.0)** - Function name exactly matches keyword
+- **Partial name matches (5.0)** - Keyword appears in name
+- **Name part matches (4.0)** - Keyword matches name component (e.g., "map" in "HashMap")
+- **Signature matches (2.0)** - Keyword in type signature
+- **Docstring matches (1.0)** - Keyword in original docstring
+- Type preference bonus (1.2x for preferred types)
+- Docstring existence bonus (1.1x for documented functions)
+
+**Design Philosophy:**
+AI descriptions get 3x weight vs docstrings because they're specifically generated
+for natural language search. This enables queries like "multiply two natural numbers"
+to correctly find `Nat.mul` (ranked #1) even though "multiply" doesn't appear in the
+function name.
 
 **Key Operations:**
 - `search_definitions(keywords, index, max_results)` → Returns ranked results
-- `rank_results(results, task_analysis)` → Re-ranks by relevance
+- `_score_definition(name, defn, keywords, prefer_types)` → Calculates relevance score
 
 ---
 

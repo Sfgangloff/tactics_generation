@@ -1,0 +1,95 @@
+# Core Lean 4 Namespaces to Include in Search Index
+#
+# This file specifies which Core library namespaces should be indexed
+# for the search agent. Only definitions matching these namespace prefixes
+# will be included when indexing the Core library.
+#
+# Format: One namespace per line
+# Lines starting with # are comments and will be ignored
+
+# Basic numeric types
+Nat
+Int
+Float
+UInt8
+UInt16
+UInt32
+UInt64
+USize
+
+# String and character operations
+String
+Char
+Substring
+
+# Collection types
+Array
+List
+Option
+Except
+
+# Tuples and sums
+Prod
+Sum
+Sigma
+PSigma
+
+# Basic types
+Bool
+Unit
+Empty
+Fin
+Subtype
+
+# IO and system
+IO
+System
+FilePath
+EIO
+BaseIO
+
+# Bit operations
+BitVec
+ByteArray
+UInt
+
+# Monadic structures
+Monad
+Functor
+Applicative
+Alternative
+MonadExcept
+MonadControl
+MonadLift
+
+# Control flow
+Id
+StateM
+ReaderM
+ExceptT
+OptionT
+StateT
+ReaderT
+
+# Ordering and comparisons
+Ordering
+Ord
+LE
+LT
+BEq
+Hashable
+
+# Logic and decidability
+Decidable
+DecidableEq
+DecidableRel
+
+# Common operations
+ToString
+Repr
+Inhabited
+Nonempty
+
+# Functions
+Function
+Equiv

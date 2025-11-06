@@ -71,21 +71,22 @@ Search Results
 ======================================================================
 Task: multiply two natural numbers
 Found: 5 results
-Time: 2.5ms
-Source: Cache (instant)
+Time: 2.9s
+Source: Fresh search
 
 ----------------------------------------------------------------------
-1. product (relevance: 1.54)
+1. Nat.mul (relevance: 3.85)
 
    Type: def
-   Signature: product : List (α × β)
+   Signature: Nat.mul : (@& Nat) → (@& Nat) → Nat
 
-   Description: `product l₁ l₂` is the list of pairs `(a, b)` where
-                `a ∈ l₁` and `b ∈ l₂`.
+   Description: Multiplication of natural numbers, usually accessed via the
+                `*` operator. This function is overridden in both the kernel
+                and the compiler to efficiently evaluate using the arbitrary-
+                precision arithmetic library.
 
    Import: import Batteries
-   Open: open Std
-   Usage: product
+   Usage: Nat.mul arg1 arg2 ...
 ----------------------------------------------------------------------
 ```
 
@@ -156,13 +157,15 @@ python3 src/search_agent.py --enrich-index
 ### Architecture
 
 ```
-User Query
+User Query: "multiply two natural numbers"
     ↓
 1. Cache Check (< 1ms if hit)
     ↓ (miss)
-2. Task Analyzer (LLM extracts keywords: "multiply", "natural", "numbers")
+2. Task Analyzer (LLM extracts keywords: "mul", "multiply", "natural", "nat", ...)
     ↓
-3. Searcher (finds relevant definitions in enriched index)
+3. Searcher (ranks definitions using semantic scoring)
+    - AI descriptions weighted 3x higher than docstrings
+    - Name matches (e.g., "Nat.mul") also get bonus points
     ↓
 4. Import Resolver (determines required imports)
     ↓
@@ -175,13 +178,20 @@ User Query
 
 1. **Task Analyzer** (`task_analyzer.py`)
    - Uses OpenAI GPT-4o-mini to extract keywords
+   - Extracts both full terms ("multiply") and abbreviated forms ("mul")
    - Identifies types, operations, paradigms
    - Caches LLM responses to reduce costs
 
 2. **Searcher** (`searcher.py`)
-   - Multi-factor ranking algorithm
-   - Searches names, signatures, descriptions
-   - Uses pre-enriched index with AI descriptions
+   - Multi-factor ranking algorithm with semantic weighting
+   - **Scoring weights (optimized for natural language search):**
+     - Exact name match: 10.0
+     - Name contains keyword: 5.0
+     - Name part matches: 4.0
+     - **AI description match: 3.0** ← High weight for semantic understanding
+     - Signature match: 2.0
+     - Docstring match: 1.0
+   - Uses pre-enriched index with AI-generated descriptions
 
 3. **Import Resolver** (`import_resolver.py`)
    - Maps definitions to import statements
@@ -201,21 +211,29 @@ User Query
 ## Index Information
 
 **Current Index:**
-- **482 definitions** from Batteries library
-- **272 functions** (def)
-- **135 theorems**
-- **28 structures**
-- **21 type classes**
-- **19 inductive types**
+- **Batteries library** (482 definitions)
+  - 272 functions (def)
+  - 135 theorems
+  - 28 structures
+  - 21 type classes
+  - 19 inductive types
+- **Core library namespaces** (filtered)
+  - Common types: `Nat`, `Int`, `Float`, `String`, `Char`
+  - Collections: `Array`, `List`, `Option`, `Except`
+  - Monadic: `IO`, `Monad`, `Functor`, `Applicative`
+  - And 40+ more essential namespaces
 
 **Coverage:**
-- ✅ Data structures (HashMap, HashSet, Array, List, etc.)
-- ✅ Control flow (monads, functors, applicatives)
-- ✅ Algorithms (sorting, searching, folding)
-- ✅ Utilities (string operations, number theory)
+- ✅ Batteries: Data structures, algorithms, utilities
+- ✅ Core: Basic types and their operations (e.g., `Nat.mul`, `Float.atan2`)
+- ✅ Monads and control flow
+- ✅ IO and system operations
+
+**Namespace Filtering:**
+The Core library is indexed with namespace filtering to include only commonly-used types like `Nat`, `Float`, `String`, etc. This keeps the index focused and fast while providing access to essential standard library functions.
 
 **NOT indexed:**
-- Core library (too low-level)
+- Full Core library (too low-level - only selected namespaces)
 - Local project files (focus on library functions)
 - Mathlib (future enhancement)
 
@@ -304,11 +322,27 @@ python3 src/search_agent.py --rebuild-index
 ```
 
 This scans all Lean source files and extracts:
-- Function definitions
-- Theorems
-- Structures and classes
+- Function definitions from Batteries
+- Core library functions (filtered by namespace)
+- Theorems, structures, classes
 - Inductive types
 - Doc comments
+
+**Advanced indexing options:**
+
+```bash
+# Rebuild with custom Core namespaces
+python3 src/lean_indexer.py --core-namespaces config/my_namespaces.txt
+
+# Include all Core definitions (no filtering - may be slow)
+python3 src/lean_indexer.py --no-core-filter
+
+# Index only Batteries (no Core)
+python3 src/lean_indexer.py --sources batteries
+
+# Verbose output to see what's being indexed
+python3 src/lean_indexer.py --verbose
+```
 
 ### Re-enriching Descriptions
 
@@ -340,14 +374,16 @@ agents/search/
 │   ├── task_analyzer.py              # LLM keyword extraction
 │   ├── searcher.py                   # Search and ranking
 │   ├── import_resolver.py            # Import statement generation
-│   ├── lean_indexer.py               # Index builder
+│   ├── lean_indexer.py               # Index builder (with namespace filtering)
 │   ├── enrich_index_descriptions.py  # Description generator
 │   └── database.py                   # SQLite operations
+├── config/
+│   └── core_namespaces.txt           # Core library namespace whitelist
 ├── prompts/
 │   ├── task_analyzer_system.txt      # Task analysis prompt
 │   └── description_enricher_system.txt # Description generation prompt
 ├── data/
-│   ├── lean_index.json               # Raw index (482 definitions)
+│   ├── lean_index.json               # Raw index (Batteries + Core namespaces)
 │   ├── enriched_lean_index.json      # Index with descriptions
 │   └── search_history.db             # SQLite database
 ├── tests/
@@ -438,23 +474,40 @@ python3 src/search_agent.py --rebuild-index
 
 Very affordable for development use!
 
+## Design Philosophy
+
+**Natural Language First:**
+The search agent prioritizes semantic understanding over exact name matching. AI-generated descriptions receive 3x higher weight than docstrings because they're specifically written for natural language search. This means:
+
+- ✅ Query "multiply two natural numbers" → finds `Nat.mul` (ranked #1)
+- ✅ Query "hash map with fast lookup" → finds `HashMap` structure
+- ✅ Query "iterate over array" → finds `Array.map`, `Array.forM`
+
+**Hybrid Approach:**
+Keywords include both:
+- Full terms: "multiply", "multiplication", "product"
+- Abbreviated forms: "mul" (as used in Lean names like `Nat.mul`)
+
+This ensures results are relevant whether users describe operations naturally or use Lean terminology.
+
 ## Limitations
 
-1. **Batteries library only**
-   - Does not search Core or Mathlib
-   - Can be extended in future
+1. **Keyword-based matching**
+   - Uses keyword extraction + weighted ranking
+   - Not true semantic/embedding search
+   - Future: Add vector embeddings for deeper semantic understanding
 
 2. **English queries only**
    - LLM optimized for English
    - Could support other languages with prompt changes
 
-3. **No semantic search**
-   - Uses keyword matching + ranking
-   - Future: Add embedding-based semantic search
-
-4. **No code generation**
+3. **No code generation**
    - Finds functions, doesn't write code
    - Future: Integrate with code generation agent
+
+4. **Single library focus**
+   - Currently Batteries + selected Core namespaces
+   - Mathlib integration planned
 
 ## Future Enhancements
 
@@ -487,6 +540,27 @@ To index additional libraries:
 1. Update `lean_indexer.py` to include new source directories
 2. Rebuild index: `python3 src/search_agent.py --rebuild-index`
 3. Enrich with descriptions: `python3 src/search_agent.py --enrich-index`
+
+### Customizing Core Namespaces
+
+Edit `config/core_namespaces.txt` to control which Core library namespaces are indexed:
+
+```txt
+# Add any namespace prefix you want to include
+Nat
+Float
+MyCustomNamespace
+```
+
+Lines starting with `#` are comments. Each namespace on its own line.
+
+After modifying the config, rebuild the index:
+```bash
+python3 src/search_agent.py --rebuild-index
+```
+
+**Why namespace filtering?**
+The Core library contains 10,000+ low-level definitions. Most users only need access to common types like `Nat`, `Float`, `String`, etc. Namespace filtering keeps the index focused, fast, and relevant while still providing access to essential standard library functions like `Nat.mul` and `Float.atan2`.
 
 ### Improving Prompts
 

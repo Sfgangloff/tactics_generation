@@ -64,6 +64,11 @@ class LeanIndexer:
             r'\s*:=',
             re.MULTILINE
         ),
+        'opaque': re.compile(
+            r'^\s*(?:@\[extern[^\]]*\]\s*)?(?:protected\s+)?opaque\s+(\w+(?:\.\w+)*)'
+            r'(?:\s*\(.*?\))?\s*:\s*([^\n:=]+?)(?:$|:=)',
+            re.MULTILINE
+        ),
     }
 
     # Pattern for doc comments
@@ -78,10 +83,17 @@ class LeanIndexer:
         re.DOTALL
     )
 
-    def __init__(self):
-        """Initialize the indexer."""
+    def __init__(self, core_namespaces: Optional[Set[str]] = None):
+        """
+        Initialize the indexer.
+
+        Args:
+            core_namespaces: Set of namespace prefixes to include from Core library.
+                           If None, all Core definitions are included.
+        """
         self.index: Dict[str, Dict] = {}
         self.lean_root: Optional[Path] = None
+        self.core_namespaces = core_namespaces
 
     def find_lean_root(self) -> Optional[Path]:
         """
@@ -115,8 +127,8 @@ class LeanIndexer:
                             # Look for matching toolchain
                             for toolchain_dir in elan_dir.glob('*'):
                                 if version in toolchain_dir.name or 'stable' in toolchain_dir.name:
-                                    lean_lib = toolchain_dir / 'lib' / 'lean' / 'library'
-                                    if lean_lib.exists():
+                                    lean_src = toolchain_dir / 'src' / 'lean'
+                                    if lean_src.exists():
                                         self.lean_root = toolchain_dir
                                         return self.lean_root
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -132,12 +144,38 @@ class LeanIndexer:
         for root in possible_roots:
             if root.exists():
                 for toolchain in root.glob('*'):
-                    lean_lib = toolchain / 'lib' / 'lean' / 'library'
-                    if lean_lib.exists():
+                    lean_src = toolchain / 'src' / 'lean'
+                    if lean_src.exists():
                         self.lean_root = toolchain
                         return self.lean_root
 
         return None
+
+    def matches_namespace_filter(self, name: str, source: str) -> bool:
+        """
+        Check if a definition should be included based on namespace filtering.
+
+        Args:
+            name: The fully qualified name of the definition
+            source: The source library ('core', 'batteries', etc.)
+
+        Returns:
+            True if the definition should be included
+        """
+        # Only filter Core library definitions
+        if source != 'core':
+            return True
+
+        # If no filter specified, include all
+        if self.core_namespaces is None:
+            return True
+
+        # Check if the name starts with any of the allowed namespaces
+        for namespace in self.core_namespaces:
+            if name.startswith(namespace + '.') or name == namespace:
+                return True
+
+        return False
 
     def get_lean_version(self) -> str:
         """
@@ -175,9 +213,9 @@ class LeanIndexer:
         """
         sources = {}
 
-        # Core library
+        # Core library (Init module contains core types like Nat, Float, etc.)
         if self.lean_root:
-            core_lib = self.lean_root / 'lib' / 'lean' / 'library'
+            core_lib = self.lean_root / 'src' / 'lean' / 'Init'
             if core_lib.exists():
                 sources['core'] = core_lib
 
@@ -352,6 +390,10 @@ class LeanIndexer:
                     # Use full qualified name as key
                     key = defn['name']
 
+                    # Apply namespace filtering
+                    if not self.matches_namespace_filter(key, source_name):
+                        continue
+
                     # Avoid duplicates (keep first occurrence)
                     if key not in self.index:
                         self.index[key] = defn
@@ -396,6 +438,42 @@ class LeanIndexer:
         return self.index
 
 
+def load_core_namespaces(config_path: Optional[Path] = None) -> Set[str]:
+    """
+    Load the list of Core namespaces to include in the index.
+
+    Args:
+        config_path: Path to config file, or None to use default
+
+    Returns:
+        Set of namespace prefixes
+    """
+    if config_path is None:
+        # Default location
+        config_path = Path(__file__).parent.parent / 'config' / 'core_namespaces.txt'
+
+    if not config_path.exists():
+        # Return sensible defaults if config file doesn't exist
+        return {
+            'Nat', 'Int', 'Float', 'String', 'Char',
+            'Array', 'List', 'Option', 'Except', 'IO',
+            'Bool', 'Prod', 'Sum', 'Unit', 'Empty',
+            'Subtype', 'Fin', 'UInt8', 'UInt16', 'UInt32', 'UInt64',
+            'BitVec', 'ByteArray'
+        }
+
+    # Load from config file
+    namespaces = set()
+    with open(config_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if line and not line.startswith('#'):
+                namespaces.add(line)
+
+    return namespaces
+
+
 def main():
     """Command-line interface for building the index."""
     import argparse
@@ -417,7 +495,17 @@ def main():
         '--sources',
         nargs='+',
         choices=['core', 'batteries', 'std', 'mathlib', 'local'],
-        help='Sources to index (default: all except mathlib)'
+        help='Sources to index (default: batteries + core namespaces)'
+    )
+    parser.add_argument(
+        '--core-namespaces',
+        type=Path,
+        help='Path to config file with Core namespaces to include'
+    )
+    parser.add_argument(
+        '--no-core-filter',
+        action='store_true',
+        help='Include all Core definitions (no namespace filtering)'
     )
     parser.add_argument(
         '--verbose',
@@ -427,16 +515,28 @@ def main():
 
     args = parser.parse_args()
 
-    # Default sources (batteries only - includes Std functionality)
+    # Default sources (batteries + filtered core)
     if not args.sources:
-        args.sources = ['batteries']
+        args.sources = ['batteries', 'core']
+
+    # Load Core namespace filter
+    core_namespaces = None
+    if 'core' in args.sources:
+        if args.no_core_filter:
+            core_namespaces = None  # No filtering
+        else:
+            core_namespaces = load_core_namespaces(args.core_namespaces)
+            if args.verbose:
+                print(f"Core namespace filter: {sorted(core_namespaces)}")
 
     print("Building Lean code index...")
     print(f"Project root: {args.project_root}")
     print(f"Sources: {args.sources}")
+    if 'core' in args.sources and core_namespaces:
+        print(f"Core namespaces: {len(core_namespaces)} namespaces")
     print()
 
-    indexer = LeanIndexer()
+    indexer = LeanIndexer(core_namespaces=core_namespaces)
     indexer.build_index(
         project_root=args.project_root,
         sources=args.sources,

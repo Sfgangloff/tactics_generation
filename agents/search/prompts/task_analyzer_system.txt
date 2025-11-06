@@ -12,12 +12,13 @@ EXTRACTION GUIDELINES:
 
 IMPORTANT RULES:
 
-- Extract 3-8 keywords (not too few, not too many)
+- Extract 3-10 keywords (capture semantic richness for description matching)
 - Use Lean 4 terminology when possible (e.g., "Nat" not "natural number")
 - Include both specific terms (e.g., "HashMap") and general terms (e.g., "hash", "map")
+- **Include abbreviated forms used in Lean names** (e.g., "mul" for multiply, "add" for addition, "sub" for subtract, "div" for divide, "mod" for modulo)
 - Avoid very generic words like "function", "create", "write" unless highly relevant
 - Include plural and singular forms if relevant (e.g., both "number" and "numbers")
-- For mathematical operations, include both the operation name and related terms (e.g., "multiply" → also "product", "times")
+- For mathematical operations, include BOTH abbreviated and full forms (e.g., "multiply" → "mul", "multiply", "product", "times")
 
 OUTPUT FORMAT:
 
@@ -34,7 +35,7 @@ EXAMPLES:
 
 Input: "multiply two natural numbers"
 Output: {
-  "keywords": ["multiply", "product", "times", "natural", "number", "arithmetic"],
+  "keywords": ["mul", "multiply", "product", "times", "multiplication", "natural", "number", "arithmetic"],
   "types": ["Nat", "Int"],
   "operations": ["multiply", "multiplication"],
   "paradigm": null,
