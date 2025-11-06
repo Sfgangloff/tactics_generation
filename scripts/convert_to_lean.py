@@ -58,126 +58,29 @@ except Exception as e:
     raise
 
 # ---------------- Few-shot examples ----------------
+# Get the project root directory (parent of scripts/)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+
 try:
-    with open("few_shots.txt", "r", encoding="utf-8") as _fs:
+    with open(os.path.join(PROJECT_ROOT, "prompts", "few_shots.txt"), "r", encoding="utf-8") as _fs:
         FEWSHOTS = _fs.read()
 except FileNotFoundError:
     FEWSHOTS = ""  # still works; just no in-context examples
 
 # ---------------- Prompt templates -----------------
 
-SYSTEM_INSTRUCTIONS = """\
-You are a Lean 4 translator. Convert the given tiny Python function + asserts into **Lean 4** with the LEAST possible deviation.
+def load_prompt(filename: str) -> str:
+    """Load a prompt template from the prompts/ directory."""
+    try:
+        with open(os.path.join(PROJECT_ROOT, "prompts", filename), "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"ERROR: Could not find prompt file: prompts/{filename}", file=sys.stderr)
+        sys.exit(1)
 
-HARD CONSTRAINTS (must ALL hold):
-
-0) Header imports are FIXED and MANDATORY — at the very top of `lean_code`:
-     import Batteries
-     open Std
-   • Do NOT import anything else. No `Mathlib`, no `open Classical`, no extra packages.
-   • Use only what is available in Batteries + Std.
-
-0b) FORBIDDEN identifiers/tokens (if any appear, you MUST regenerate a compliant solution):
-   Mathlib, Finset, Multiset, List.toFinset, open Classical, classical, decide, simp, theorem, lemma.
-0c) Set-like tasks (e.g., “shared/similar/common elements”):
-    • IMPLEMENT WITH Std.HashSet ONLY. Do not use Finset.
-    • The function MAY return a HashSet (preferred) if Python used set semantics.
-      In that case, ADAPT the tests to compare as sets (unordered), not lists.
-    • ABSOLUTELY FORBIDDEN: any sorting or “fake sorting helpers”.
-      Do NOT use qsort, List.qsort, List.sort, mergeSort, Array.qsort,
-      insertionSort, or any locally-defined sort (e.g., isort/insertBy, etc.).
-    • If you need determinism for internal folds, it’s fine; but DO NOT
-      transform the public result into a sorted list.
-
-0d) Test adaptation (MANDATORY when 0c applies):
-    • If Python built a set (e.g., set(...) & set(...)) and then coerced to tuple,
-      treat order as unspecified. In Lean, compare as HashSets:
-         #guard decide (similarElements xs ys = Std.HashSet.ofList expected)
-    • Do NOT sort to force list equality.
-0e) Strings: NEVER use `String.extract`, `String.Pos`, or `String.Pos.Raw`.
-    Only use: `String.length`, `String.take`, `String.drop`, `(++)`.
-    Example rotation check: `s == (s.drop k) ++ (s.take k)`.
-
-0f) DO NOT use any heap APIs (`BinaryHeap`, `pop?`, etc.).
-    Implement deterministically by repeating:
-      - find the current minimum with a single `foldl`,
-      - remove exactly ONE occurrence of that minimum,
-      - append it to the result,
-      - repeat up to n times or until the list is empty.
-    This must be done with List operations only (no sorting calls, no custom sort).
-
-0g) Sorting ban: Do not call `sort`, `qsort`, `mergeSort`, `isort`, or any sort.
-    If Python semantics are set-like but tests assert order, choose a construction
-    that produces the required order without sorting. Otherwise compare as sets.
-1) No creativity. Do not change the algorithm, control flow, or data structures unless absolutely necessary to make Lean compile or to mirror Python semantics for the given tests.
-
-2) Preserve the public API exactly.
-   - Same function name (camelCase OK), same arguments, same return “kind”.
-   - Do NOT introduce Option/IO/State/etc. unless Python explicitly models that behavior.
-   - If Python assumes valid indices, keep that assumption; put preconditions in a comment.
-
-3) Purity. No printing, no IO. Local mutation via `Id.run` is fine when needed.
-
-4) Tests must mirror Python asserts and deterministically pass.
-   - If Python used sets but tests expect order, sort deterministically at the end (e.g. `qsort (· ≤ ·)`) and note it.
-
-5) Imports: only the fixed header from (0). No unused imports.
-
-6) One module per task named `Task{task_id}`; put function and tests in the same file or clearly separated sections.
-
-7) Output format: return ONE JSON object with keys:
-   task_id, lean_module_name, lean_code, lean_tests, notes
-   No markdown fences. No prose outside JSON.
-
-Type mapping:
-- Python int → `Nat` if nonnegative, else `Int` (note in `notes` if ambiguous).
-- Python bool → `Bool`.
-- Python lists/tuples of ints → `List Nat` / `List Int`.
-- **Set-like behavior:** DO NOT use `Finset`. Implement via Batteries/Std only:
-  • Either list-based (e.g., `filter` + `any` + a dedup pass like `eraseDups` you define), then `qsort (· ≤ ·)`;
-  • Or `Std.HashSet` if helpful — but still no Mathlib/Finset.
-
-Indexing/bounds:
-- Follow Python’s implicit assumptions; document preconditions instead of changing return types.
-
-SELF-CHECK before returning:
-- `lean_code` must begin exactly with the two header lines and contain none of the forbidden tokens from (0b).
-"""
-
-USER_TEMPLATE = """\
-Task ID: {task_id}
-
-Translate the following Python LITERALLY to Lean 4, following ALL HARD CONSTRAINTS and STRICT RULES.
-
-Python task description:
-{text}
-
-Python code:
-{code}
-
-Python test setup (if any):
-{test_setup_code}
-
-Python asserts:
-{tests}
-
-Challenge tests (if any):
-{challenge_tests}
-
-Deliver ONE JSON object:
-- task_id: integer
-- lean_module_name: "Task{task_id}"
-- lean_code: Lean 4 code using ONLY the fixed header (Batteries/Std), no other imports, no IO/prints
-- lean_tests: Lean 4 tests that mirror the Python asserts (deterministic; sort if Python used sets but order is asserted)
-- notes: brief list of any absolutely necessary deviations (e.g., “sorted after dedup to match asserted order”)
-
-Sorting requirement: do not use any library sort. If you need a deterministic order,
-inline the local `isort` helper (see rules) and call `isort (· ≤ ·) …`.
-
-Here are a few examples to help you:
-
-{fewshots}
-"""
+SYSTEM_INSTRUCTIONS = load_prompt("convert_system_instructions.txt")
+USER_TEMPLATE = load_prompt("convert_user_template.txt")
 
 # ---------------- Utilities -----------------
 
@@ -361,7 +264,7 @@ def main():
             open(args.output, "a", encoding="utf-8").close()
 
     # --- Load API key ---
-    key_path = "openai_key.txt"
+    key_path = os.path.join(PROJECT_ROOT, "openai_key.txt")
     if os.path.exists(key_path):
         api_key = open(key_path, "r", encoding="utf-8").read().strip()
     else:
@@ -454,10 +357,11 @@ def main():
             try:
                 print(f"[convert_to_lean] Running fix_lean on {lean_file_path}...", flush=True)
                 import subprocess
+                fix_lean_path = os.path.join(SCRIPT_DIR, "fix_lean.py")
                 subprocess.run(
                     [
                         sys.executable,
-                        "fix_lean.py",
+                        fix_lean_path,
                         "--allow-warnings",  # or "--treat-warnings-as-errors"
                         str(lean_file_path),
                         args.input,

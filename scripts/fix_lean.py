@@ -24,8 +24,12 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from openai import OpenAI
 
+# Get the project root directory (parent of scripts/)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+
 OPENAI_MODEL = "gpt-5"
-OPENAI_KEY_PATH = "openai_key.txt"  # or env OPENAI_API_KEY
+OPENAI_KEY_PATH = os.path.join(PROJECT_ROOT, "openai_key.txt")  # or env OPENAI_API_KEY
 
 # ------------------- Project detection -------------------
 
@@ -136,74 +140,25 @@ def load_openai_client() -> OpenAI:
         sys.exit(1)
     return OpenAI(api_key=key)
 
-SYSTEM_BASE = (
-    "You are an expert Lean 4 and Python translator.\n"
-    "You receive a Lean file generated from Python code.\n"
-    "Fix ALL Lean compilation issues while keeping the Lean code as close as possible "
-    "to a literal translation of the Python code.\n"
-    "Do NOT modify the tests or their logic.\n"
-    "Eliminate all warnings as well (unused vars, shadowed names, non-exhaustive matches, deprecations, etc.).\n"
-    "\n"
-    "PRIOR THINKING (DO NOT OUTPUT):\n"
-    "- First read the Lean file carefully and construct for yourself a concise, line-by-line explanation of what each line does\n"
-    "  and how it corresponds to the provided Python reference.\n"
-    "- Use that internal explanation to plan the minimal, correct repair. Do not include *any* of this explanation in your reply.\n"
-    "- Your reply must still follow the STRICT OUTPUT RULES below and contain only the final Lean source code.\n"
-    "\n"
-    "STRICT OUTPUT RULES:\n"
-    "1) Return ONLY raw Lean source code (no markdown fences, no ```lean, no explanations).\n"
-    "2) The first two lines MUST be exactly:\n"
-    "     import Batteries\n"
-    "     open Std\n"
-    "3) Do not remove existing tests; keep their module placement.\n"
-    "\n"
-    "ABSOLUTE BANS:\n"
-    "- NEVER use: `sorry`, `admit`, `by admit`, `by sorry`, `unsafe`, `axiom`, `partial`.\n"
-    "- NEVER use deprecated or unavailable APIs: `String.get`, `String.get!`, `String.extract`, `String.Pos`, `String.Pos.Raw`, "
-    "`Std.HashMap.findD`.\n"
-    "\n"
-    "STRING RULES:\n"
-    "- If indexing/slicing is needed, use only `String.length`, `String.take`, `String.drop`, or convert to `List Char` via `s.data` "
-    "  and rebuild with `String.mk`.\n"
-    "\n"
-    "HASHMAP/HASHSET RULES (Std/Batteries-compatible):\n"
-    "- For maps, use: `insert`, `erase`, `contains`, `find? : α → Option β`, and combine with `Option.getD` or a `match` to supply defaults.\n"
-    "  Example: `let v := (m.find? k).getD defVal`  -- not `findD`.\n"
-    "- For sets, use `Std.HashSet` (`insert`, `erase`, `contains`, `fold`, etc.). Do NOT use `Finset`.\n"
-)
+def load_prompt(filename: str) -> str:
+    """Load a prompt template from the prompts/ directory."""
+    try:
+        with open(os.path.join(PROJECT_ROOT, "prompts", filename), "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"ERROR: Could not find prompt file: prompts/{filename}", file=sys.stderr)
+        sys.exit(1)
 
-SYSTEM_RETRY_APPEND = (
-    "\nYour previous output did not resolve the reported diagnostics or was identical to the input.\n"
-    "You MUST alter the Lean code to eliminate ALL errors and warnings while preserving tests.\n"
-)
+SYSTEM_BASE = load_prompt("fix_system_base.txt")
+SYSTEM_RETRY_APPEND = load_prompt("fix_system_retry_append.txt")
+STRING_IDIOMS_HINT = load_prompt("fix_string_idioms_hint.txt")
+API_HINT = load_prompt("fix_api_hint.txt")
 
 def needs_string_rewrite(diags: List[Dict]) -> bool:
     """Detect deprecation around String.get / String.Pos in diagnostics."""
     bad = ("String.get", "String.get!", "String.Pos", "String.Pos.Raw", "String.extract")
     text = " ".join(d.get("message","") for d in diags)
     return any(b in text for b in bad)
-
-STRING_IDIOMS_HINT = (
-    "\nIDIOMS YOU MUST USE INSTEAD OF String.get:\n"
-    "- Convert to chars: `let cs := s.data : List Char` and traverse/index the list; rebuild with `String.mk cs`.\n"
-    "- Or use slices: `s.take k` / `s.drop k` (characters counted in `Nat`).\n"
-    "Examples:\n"
-    "-- remove char at index i:\n"
-    "  let rec dropAt (xs : List Char) (i k : Nat) : List Char :=\n"
-    "    match xs with | [] => [] | c::xs =>\n"
-    "      let tail := dropAt xs i (k+1)\n"
-    "      if k = i then tail else c :: tail\n"
-    "  String.mk (dropAt s.data i 0)\n"
-    "-- rotate left by k:\n"
-    "  (s.drop k) ++ (s.take k)\n"
-)
-
-API_HINT = (
-    "\nUse these API idioms:\n"
-    "- HashMap lookup with default: `let v := (m.find? k).getD defVal` or `match m.find? k with | some v => v | none => defVal`.\n"
-    "- Do NOT call `.findD` on HashMap (not available in Std/Batteries).\n"
-    "- Avoid `String.get`/`String.get!`/`String.extract`/`String.Pos`; instead use `s.take k`, `s.drop k`, or operate on `s.data` and `String.mk`.\n"
-)
 
 def build_user_prompt(lean_code: str, python_code: str, diags: List[Dict], treat_warnings_as_errors: bool) -> str:
     summary = {

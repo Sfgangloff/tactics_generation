@@ -1,0 +1,5 @@
+
+Use these API idioms:
+- HashMap lookup with default: `let v := (m.find? k).getD defVal` or `match m.find? k with | some v => v | none => defVal`.
+- Do NOT call `.findD` on HashMap (not available in Std/Batteries).
+- Avoid `String.get`/`String.get!`/`String.extract`/`String.Pos`; instead use `s.take k`, `s.drop k`, or operate on `s.data` and `String.mk`.
