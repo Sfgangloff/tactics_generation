@@ -149,7 +149,30 @@ def load_prompt(filename: str) -> str:
         print(f"ERROR: Could not find prompt file: prompts/{filename}", file=sys.stderr)
         sys.exit(1)
 
-SYSTEM_BASE = load_prompt("fix_system_base.txt")
+def detect_style_from_path(lean_path: str) -> str:
+    """Detect the code style from the file path (Imperative/, Functional/, Free_code/)."""
+    path_parts = Path(lean_path).parts
+    if "Imperative" in path_parts:
+        return "Imperative"
+    elif "Functional" in path_parts:
+        return "Functional"
+    elif "Free_code" in path_parts:
+        return "Free_code"
+    # Default to Functional if not in a specific subdirectory
+    return "Functional"
+
+def load_system_base_for_style(style: str) -> str:
+    """Load the appropriate fix_system_base prompt based on style."""
+    if style == "Imperative":
+        return load_prompt("fix_system_base_imperative.txt")
+    elif style == "Functional":
+        return load_prompt("fix_system_base_functional.txt")
+    elif style == "Free_code":
+        return load_prompt("fix_system_base_free_code.txt")
+    else:
+        # Default fallback
+        return load_prompt("fix_system_base.txt")
+
 SYSTEM_RETRY_APPEND = load_prompt("fix_system_retry_append.txt")
 STRING_IDIOMS_HINT = load_prompt("fix_string_idioms_hint.txt")
 API_HINT = load_prompt("fix_api_hint.txt")
@@ -160,19 +183,21 @@ def needs_string_rewrite(diags: List[Dict]) -> bool:
     text = " ".join(d.get("message","") for d in diags)
     return any(b in text for b in bad)
 
-def build_user_prompt(lean_code: str, python_code: str, diags: List[Dict], treat_warnings_as_errors: bool) -> str:
+def build_user_prompt(lean_code: str, python_code: Optional[str], diags: List[Dict], treat_warnings_as_errors: bool) -> str:
     summary = {
         "treat_warnings_as_errors": treat_warnings_as_errors,
         "diagnostics": diags,
     }
-    return (
-        "# Original Lean file:\n"
-        f"{lean_code}\n\n"
-        "# Original Python code:\n"
-        f"{python_code}\n\n"
-        "# Lean diagnostics (errors and warnings):\n"
-        f"{json.dumps(summary, indent=2)}\n"
-    )
+
+    prompt = f"# Original Lean file:\n{lean_code}\n\n"
+
+    # Only include Python code if it's provided (not Free_code style)
+    if python_code:
+        prompt += f"# Original Python code:\n{python_code}\n\n"
+
+    prompt += f"# Lean diagnostics (errors and warnings):\n{json.dumps(summary, indent=2)}\n"
+
+    return prompt
 
 def call_openai_fix(client: OpenAI, system_prompt: str, user_prompt: str) -> str:
     resp = client.responses.create(
@@ -266,8 +291,16 @@ def main():
         sys.exit(1)
 
     task_id = extract_task_id(lean_path)
-    python_code = extract_python_code(dataset_path, task_id)
     lean_code = open(lean_path, "r", encoding="utf-8").read()
+
+    # Detect style from path
+    style = detect_style_from_path(lean_path)
+    print(f"[fix_lean] Detected style: {style}")
+
+    # Only extract Python code if not Free_code style
+    python_code = None
+    if style != "Free_code":
+        python_code = extract_python_code(dataset_path, task_id)
 
     diags = run_lean_check(lean_path, treat_warnings_as_errors=treat_warn)
     blocking = [d for d in diags if (d["kind"] == "error") or (treat_warn and d["kind"] == "warning")]
@@ -282,7 +315,8 @@ def main():
     print(f"[fix_lean] Found {len(blocking)} blocking diagnostic(s). Sending to OpenAI...")
     client = load_openai_client()
 
-    # Base prompt + conditional API hints
+    # Load style-specific base prompt + conditional API hints
+    SYSTEM_BASE = load_system_base_for_style(style)
     system_prompt = SYSTEM_BASE
     diag_text = " ".join(d.get("message","") for d in diags)
     if "findD" in diag_text or "HashMap.findD" in diag_text or needs_string_rewrite(diags):

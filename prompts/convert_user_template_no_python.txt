@@ -1,0 +1,26 @@
+Task ID: {task_id}
+
+Implement the following task in Lean 4, following ALL HARD CONSTRAINTS and STRICT RULES.
+
+Task description:
+{text}
+
+Requirements (if any):
+{requirements}
+
+Test cases:
+{test_cases}
+
+Challenge requirements (if any):
+{challenge_requirements}
+
+Deliver ONE JSON object:
+- task_id: integer
+- lean_module_name: "Task{task_id}"
+- lean_code: Lean 4 code using ONLY the fixed header (Batteries/Std), no other imports, no IO/prints
+- lean_tests: Lean 4 tests that verify the implementation (deterministic; use HashSet comparison for unordered results)
+- notes: brief list of any design decisions or deviations from typical patterns
+
+Here are a few examples to help you:
+
+{fewshots}

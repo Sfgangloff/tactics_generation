@@ -62,11 +62,13 @@ except Exception as e:
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-try:
-    with open(os.path.join(PROJECT_ROOT, "prompts", "few_shots.txt"), "r", encoding="utf-8") as _fs:
-        FEWSHOTS = _fs.read()
-except FileNotFoundError:
-    FEWSHOTS = ""  # still works; just no in-context examples
+def load_optional_file(filename: str) -> str:
+    """Load a file from prompts/ directory, return empty string if not found."""
+    try:
+        with open(os.path.join(PROJECT_ROOT, "prompts", filename), "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
 
 # ---------------- Prompt templates -----------------
 
@@ -79,8 +81,19 @@ def load_prompt(filename: str) -> str:
         print(f"ERROR: Could not find prompt file: prompts/{filename}", file=sys.stderr)
         sys.exit(1)
 
-SYSTEM_INSTRUCTIONS = load_prompt("convert_system_instructions.txt")
-USER_TEMPLATE = load_prompt("convert_user_template.txt")
+def load_prompts_for_style(style: str):
+    """Load system instructions and user template based on style."""
+    if style == "Imperative":
+        system = load_prompt("convert_system_instructions_imperative.txt")
+        user = load_prompt("convert_user_template_imperative.txt")
+    elif style == "Free_code":
+        # For now, use the no_python versions for Free_code style
+        system = load_prompt("convert_system_instructions_no_python.txt")
+        user = load_prompt("convert_user_template_no_python.txt")
+    else:  # Functional or default
+        system = load_prompt("convert_system_instructions.txt")
+        user = load_prompt("convert_user_template.txt")
+    return system, user
 
 # ---------------- Utilities -----------------
 
@@ -222,6 +235,7 @@ class Args:
     retry_base_delay: float
     timeout: float
     lean_out: str
+    style: str
 
 def parse_args() -> Args:
     p = argparse.ArgumentParser()
@@ -234,6 +248,8 @@ def parse_args() -> Args:
     p.add_argument("--retry-base-delay", type=float, default=2.0)
     p.add_argument("--timeout", type=float, default=120.0, help="Per-request timeout in seconds.")
     p.add_argument("--lean-out", default="TacticsGeneration/Tasks", help="Directory to write generated .lean files.")
+    p.add_argument("--style", default="Functional", choices=["Functional", "Imperative", "Free_code"],
+                   help="Code generation style: Functional, Imperative, or Free_code.")
     a = p.parse_args()
     return Args(
         input=a.input,
@@ -245,12 +261,16 @@ def parse_args() -> Args:
         retry_base_delay=a.retry_base_delay,
         timeout=a.timeout,
         lean_out=a.lean_out,
+        style=a.style,
     )
 
 # ---------------- Main -----------------
 
 def main():
     args = parse_args()
+
+    # Load prompts based on style
+    SYSTEM_INSTRUCTIONS, USER_TEMPLATE = load_prompts_for_style(args.style)
 
     # DO NOT clear output file. Instead, read existing task_ids and skip them.
     already_done = existing_task_ids(args.output)
@@ -300,15 +320,26 @@ def main():
         tests = item.get("test_list", [])
         challenge = item.get("challenge_test_list", [])
 
-        user_prompt = USER_TEMPLATE.format(
-            task_id=task_id,
-            text=text,
-            code=code,
-            test_setup_code=test_setup,
-            tests="\n".join(f"- {t}" for t in tests),
-            challenge_tests="\n".join(f"- {t}" for t in challenge) if challenge else "(none)",
-            fewshots=FEWSHOTS,
-        )
+        # Prepare format arguments based on style
+        format_args = {
+            "task_id": task_id,
+            "text": text,
+            "code": code,
+            "test_setup_code": test_setup,
+            "tests": "\n".join(f"- {t}" for t in tests),
+            "challenge_tests": "\n".join(f"- {t}" for t in challenge) if challenge else "(none)",
+        }
+
+        # Add style-specific examples
+        if args.style == "Functional":
+            format_args["fewshots"] = load_optional_file("few_shots_no_python.txt")
+        elif args.style == "Imperative":
+            format_args["imperative_example"] = load_optional_file("example_imperative_programming")
+            format_args["fewshots"] = load_optional_file("few_shots_imperative.txt")  # if it exists
+        elif args.style == "Free_code":
+            format_args["fewshots"] = ""  # or load different examples if needed
+
+        user_prompt = USER_TEMPLATE.format(**format_args)
 
         print(f"[convert_to_lean] Task {task_id} initiated", flush=True)
 
@@ -341,7 +372,7 @@ def main():
                 "lean_result": result,  # expects lean_module_name / lean_code / lean_tests
             }
             if isinstance(result, dict) and all(k in result for k in ("lean_code", "lean_tests")):
-                lean_file_path = write_lean_from_entry(entry_for_writer, out_dir=args.lean_out)
+                lean_file_path = write_lean_from_entry(entry_for_writer, out_dir=os.path.join(args.lean_out, args.style))
         except Exception as werr:
             print(f"[convert_to_lean] WARNING: failed to write .lean for task {task_id}: {werr}", flush=True)
 

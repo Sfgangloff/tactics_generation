@@ -68,33 +68,108 @@ Current code generation enforces these constraints (may evolve for mathematical 
 ### Directory Structure
 
 ```
-tactics_generation/
-├── scripts/                     # Python tooling (all executable from here)
-│   ├── convert_to_lean.py      # LLM-based Lean code generation
-│   ├── fix_lean.py             # Iterative repair system
-│   ├── write_lean_from_entry.py # Lean file structuring utility
-│   ├── clean_lean_files.py     # Code cleanup utility
-│   └── re_json.py              # JSONL extraction utility
-├── prompts/                     # LLM prompt templates (externalizable)
+tactics_generation/                    # PROJECT ROOT
+├── scripts/                          # Python tooling (all executable from here)
+│   ├── convert_to_lean.py           # LLM-based Lean code generation
+│   ├── fix_lean.py                  # Iterative repair system
+│   ├── write_lean_from_entry.py     # Lean file structuring utility
+│   ├── clean_lean_files.py          # Code cleanup utility
+│   └── re_json.py                   # JSONL extraction utility
+├── prompts/                          # LLM prompt templates (externalizable)
 │   ├── convert_system_instructions.txt
 │   ├── convert_user_template.txt
-│   ├── few_shots.txt           # Few-shot examples for code generation
+│   ├── few_shots.txt                # Few-shot examples for code generation
 │   ├── fix_system_base.txt
 │   ├── fix_system_retry_append.txt
 │   ├── fix_string_idioms_hint.txt
 │   └── fix_api_hint.txt
-├── TacticsGeneration/          # Lean 4 library
-│   ├── Benchmark.lean          # Manual benchmark (10 reference tasks)
-│   ├── Test*.lean              # Experiment results with annotations
-│   ├── Tasks/                  # Auto-generated Lean files (unvalidated)
-│   └── Tasks/Validated/        # Successfully compiled Lean files
-├── data/                        # Datasets
-│   ├── mbpp.jsonl              # Source data (Python benchmark - legacy)
-│   └── mblp.jsonl              # Translation results with metadata
-├── openai_key.txt              # OpenAI API key (gitignored)
-├── lakefile.toml               # Lean project configuration
-└── CLAUDE.md                   # This file
+├── TacticsGeneration/               # Lean 4 library
+│   ├── Benchmark.lean               # Manual benchmark (10 reference tasks)
+│   ├── Test*.lean                   # Experiment results with annotations
+│   ├── Tasks/                       # Auto-generated Lean files (unvalidated)
+│   └── Tasks/Validated/             # Successfully compiled Lean files
+├── agents/                           # Multi-agent system components
+│   └── search/                      # Search agent for Lean library functions
+│       ├── src/                     # Source code
+│       │   ├── search_agent.py     # Main CLI and orchestrator
+│       │   ├── task_analyzer.py    # LLM keyword extraction
+│       │   ├── searcher.py         # Search and ranking
+│       │   ├── import_resolver.py  # Import statement generation
+│       │   ├── lean_indexer.py     # Index builder
+│       │   ├── enrich_index_descriptions.py  # Description generator
+│       │   └── database.py         # SQLite operations
+│       ├── prompts/                # Agent-specific prompts
+│       │   ├── task_analyzer_system.txt
+│       │   └── description_enricher_system.txt
+│       ├── config/                 # Configuration files
+│       │   └── core_namespaces.txt
+│       ├── data/                   # Agent data files
+│       │   ├── lean_index.json
+│       │   ├── enriched_lean_index.json
+│       │   └── search_history.db
+│       ├── docs/                   # Agent documentation
+│       │   └── search_agent_plan.md
+│       ├── tests/                  # Agent tests
+│       └── README.md               # Agent-specific README
+├── data/                            # Project-wide datasets
+│   ├── mbpp.jsonl                  # Source data (Python benchmark - legacy)
+│   └── mblp.jsonl                  # Translation results with metadata
+├── openai_key.txt                  # OpenAI API key (gitignored)
+├── lakefile.toml                   # Lean project configuration
+└── CLAUDE.md                       # This file
 ```
+
+**Note:** This structure shows both the legacy code generation tools (scripts/) and the new multi-agent architecture (agents/). When working with files, always verify which subsystem you're working in.
+
+## File Operations Protocol
+
+**CRITICAL: Always verify you are in the correct directory before creating or modifying files.**
+
+### Before Creating/Modifying Files:
+
+1. **Check current working directory** using the environment information provided
+2. **Verify the target path** matches the intended location in the project structure
+3. **Use absolute paths** when possible to avoid ambiguity
+4. **Double-check file locations** against the Directory Structure above
+
+### Example Verification Pattern:
+
+```python
+# WRONG: Creating files without checking location
+# Could accidentally create in wrong directory!
+
+# RIGHT: Verify location first
+# Current working directory: /Users/.../tactics_generation/
+# Target file: scripts/new_script.py
+# Full path: /Users/.../tactics_generation/scripts/new_script.py
+# ✓ Verified - proceed with file creation
+```
+
+### Common Mistakes to Avoid:
+
+❌ **Don't assume relative paths** - Always verify against absolute project structure
+❌ **Don't create files in parent directories** without explicit confirmation
+❌ **Don't modify files** without reading them first to confirm location
+✅ **Do check working directory** before any file operation
+✅ **Do use absolute paths** for all file operations
+✅ **Do verify file exists** at expected location after reading
+
+### Special Considerations:
+
+**For multi-agent projects** (like `agents/search/`):
+- Verify you're in the correct agent subdirectory
+- Check that paths are relative to the agent root, not project root
+- Example: `agents/search/src/search_agent.py` vs `scripts/convert_to_lean.py`
+
+**For Python scripts:**
+- All scripts in `scripts/` should be run from project root
+- Scripts automatically resolve paths relative to project root
+- Verify imports and path resolution match project structure
+
+**For Lean files:**
+- Lean files go in `TacticsGeneration/` directory
+- Validated files go in `TacticsGeneration/Tasks/Validated/`
+- Never create Lean files in `scripts/` or `data/`
 
 ## Common Commands
 
