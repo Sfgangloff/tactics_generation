@@ -9,9 +9,17 @@ dataset, ask gpt-5 to repair the Lean file (eliminating errors AND warnings),
 then rewrite the file in place.
 
 Usage:
-    python fix_lean.py TacticsGeneration/Tasks/Task11.lean data/mbpp.jsonl
-    # optional:
-    python fix_lean.py --allow-warnings TacticsGeneration/Tasks/Task11.lean data/mbpp.jsonl
+    # For functional style:
+    python fix_lean.py TacticsGeneration/Tasks/Functional/Task11.lean data/mblp-temp_functional.jsonl
+
+    # For imperative style:
+    python fix_lean.py TacticsGeneration/Tasks/Imperative/Task11.lean data/mblp-temp_imperative.jsonl
+
+    # For free code style (no Python reference):
+    python fix_lean.py TacticsGeneration/Tasks/Free_code/Task11.lean data/mblp-temp_free_code.jsonl
+
+    # Optional flags:
+    python fix_lean.py --allow-warnings TacticsGeneration/Tasks/Task11.lean data/mblp-temp_functional.jsonl
 """
 
 import subprocess
@@ -288,6 +296,7 @@ def main():
 
     if not os.path.exists(lean_path) or not os.path.exists(dataset_path):
         print("Usage: python fix_lean.py [--allow-warnings|--treat-warnings-as-errors] <lean_file> <dataset_jsonl>")
+        print("Note: dataset_jsonl should match the style: mblp-temp_functional.jsonl, mblp-temp_imperative.jsonl, or mblp-temp_free_code.jsonl")
         sys.exit(1)
 
     task_id = extract_task_id(lean_path)

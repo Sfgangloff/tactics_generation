@@ -23,13 +23,19 @@ Usage:
   1) Put your API key in openai_key.txt   (or set OPENAI_API_KEY)
   2) Few-shots live in few_shots.txt
   3) Run:
-     python convert_to_lean.py \
+     python scripts/convert_to_lean.py \
         --input data/mbpp.jsonl \
         --output data/mblp.jsonl \
         --n 3 \
         --model gpt-5 \
-        --timeout 60 \
-        --lean-out TacticsGeneration/Tasks
+        --timeout 6000 \
+        --lean-out TacticsGeneration/Tasks \
+        --style Imperative
+
+     Note: Output filename will automatically be modified based on style:
+     - Functional → data/mblp-temp_functional.jsonl
+     - Imperative → data/mblp-temp_imperative.jsonl
+     - Free_code → data/mblp-temp_free_code.jsonl
 """
 
 from __future__ import annotations
@@ -154,6 +160,42 @@ def existing_task_ids(path: str) -> Set[int]:
         print(f"[convert_to_lean] WARNING: failed to read existing output '{path}': {e}", flush=True)
     return ids
 
+def generate_style_specific_output(base_output: str, style: str) -> str:
+    """
+    Generate output filename based on style.
+    Example: data/mblp.jsonl + Imperative → data/mblp-temp_imperative.jsonl
+
+    Removes any existing style suffix first to handle cases where user
+    specifies data/mblp-temp_functional.jsonl but wants Imperative style.
+    """
+    from pathlib import Path
+
+    path = Path(base_output)
+    stem = path.stem  # e.g., "mblp-temp" or "mblp-temp_functional"
+
+    # Remove existing style suffixes if present
+    for suffix in ["_functional", "_imperative", "_free_code"]:
+        if stem.endswith(suffix):
+            stem = stem[:-len(suffix)]
+            break
+
+    # Ensure "-temp" is in the stem (add it if not present)
+    if not stem.endswith("-temp"):
+        stem = stem + "-temp"
+
+    # Add new style suffix
+    style_suffix_map = {
+        "Functional": "_functional",
+        "Imperative": "_imperative",
+        "Free_code": "_free_code",
+    }
+
+    style_suffix = style_suffix_map.get(style, "_functional")
+    new_stem = stem + style_suffix
+    new_path = path.parent / (new_stem + path.suffix)
+
+    return str(new_path)
+
 # ---------------- OpenAI call -----------------
 
 def call_openai(
@@ -269,19 +311,23 @@ def parse_args() -> Args:
 def main():
     args = parse_args()
 
+    # Generate style-specific output filename
+    style_specific_output = generate_style_specific_output(args.output, args.style)
+    print(f"[convert_to_lean] Using output file: {style_specific_output}", flush=True)
+
     # Load prompts based on style
     SYSTEM_INSTRUCTIONS, USER_TEMPLATE = load_prompts_for_style(args.style)
 
     # DO NOT clear output file. Instead, read existing task_ids and skip them.
-    already_done = existing_task_ids(args.output)
+    already_done = existing_task_ids(style_specific_output)
     if already_done:
-        print(f"[convert_to_lean] Found {len(already_done)} existing task(s) in {args.output}; will skip them.", flush=True)
+        print(f"[convert_to_lean] Found {len(already_done)} existing task(s) in {style_specific_output}; will skip them.", flush=True)
     else:
         # Ensure the file exists, so later appends won't fail on a missing directory.
         # (Don't create directories automatically; assume user passed a valid path.)
-        if not os.path.exists(args.output):
+        if not os.path.exists(style_specific_output):
             # Touch the file (parent must exist).
-            open(args.output, "a", encoding="utf-8").close()
+            open(style_specific_output, "a", encoding="utf-8").close()
 
     # --- Load API key ---
     key_path = os.path.join(PROJECT_ROOT, "openai_key.txt")
@@ -321,23 +367,33 @@ def main():
         challenge = item.get("challenge_test_list", [])
 
         # Prepare format arguments based on style
-        format_args = {
-            "task_id": task_id,
-            "text": text,
-            "code": code,
-            "test_setup_code": test_setup,
-            "tests": "\n".join(f"- {t}" for t in tests),
-            "challenge_tests": "\n".join(f"- {t}" for t in challenge) if challenge else "(none)",
-        }
+        if args.style == "Free_code":
+            # Free_code template uses different placeholder names
+            format_args = {
+                "task_id": task_id,
+                "text": text,
+                "requirements": test_setup if test_setup else "(none)",
+                "test_cases": "\n".join(f"- {t}" for t in tests) if tests else "(none)",
+                "challenge_requirements": "\n".join(f"- {t}" for t in challenge) if challenge else "(none)",
+                "fewshots": load_optional_file("few_shots_no_python.txt"),
+            }
+        else:
+            # Functional and Imperative styles use original placeholders
+            format_args = {
+                "task_id": task_id,
+                "text": text,
+                "code": code,
+                "test_setup_code": test_setup,
+                "tests": "\n".join(f"- {t}" for t in tests),
+                "challenge_tests": "\n".join(f"- {t}" for t in challenge) if challenge else "(none)",
+            }
 
-        # Add style-specific examples
-        if args.style == "Functional":
-            format_args["fewshots"] = load_optional_file("few_shots_no_python.txt")
-        elif args.style == "Imperative":
-            format_args["imperative_example"] = load_optional_file("example_imperative_programming")
-            format_args["fewshots"] = load_optional_file("few_shots_imperative.txt")  # if it exists
-        elif args.style == "Free_code":
-            format_args["fewshots"] = ""  # or load different examples if needed
+            # Add style-specific examples
+            if args.style == "Functional":
+                format_args["fewshots"] = load_optional_file("few_shots_no_python.txt")
+            elif args.style == "Imperative":
+                format_args["imperative_example"] = load_optional_file("example_imperative_programming")
+                format_args["fewshots"] = load_optional_file("few_shots_imperative.txt")  # if it exists
 
         user_prompt = USER_TEMPLATE.format(**format_args)
 
@@ -360,7 +416,7 @@ def main():
                 "error": repr(e),
                 "input_item": item,
             }
-            append_jsonl(args.output, out)
+            append_jsonl(style_specific_output, out)
             processed_new += 1  # Count this as handled (we won't retry it in future runs).
             continue
 
@@ -402,13 +458,13 @@ def main():
             except Exception as fixerr:
                 print(f"[convert_to_lean] WARNING: fix_lean failed on {lean_file_path}: {fixerr}", flush=True)
 
-        append_jsonl(args.output, out)
+        append_jsonl(style_specific_output, out)
         processed_new += 1
 
     print(
         f"Examined {seen_input} input item(s). "
         f"Processed {processed_new} new item(s). "
-        f"Skipped {skipped} already-done item(s). Output -> {args.output}"
+        f"Skipped {skipped} already-done item(s). Output -> {style_specific_output}"
     )
 
 if __name__ == "__main__":
