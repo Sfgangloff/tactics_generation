@@ -1,9 +1,17 @@
 import Lean
 open Lean Meta Elab.Tactic
 
+/- This is a first attempt to generate a uniform tactic for implicational formulas of intuitionistic propositional logic.
+The solution matches the form of the statements too closely and does not generalize.
+
+In all the further attempts, we note only the tactic obtained after recursive
+corrective loop to solve syntactic problems within the tactic.
+-/
+
 /-- Close a goal of the form `A → B → A` or `A → B → B` (and also `A → A → A`). -/
 def proj_or_swap : TacticM Unit := do
-  -- 1) Introduce two arguments `a` and `b`
+  -- 1) This uses the structure of the the goal which is a composition of two implications.
+  -- `A → B → C`
   let g0 ← getMainGoal
   let (_, g1) ← g0.intro `a
   let (_, g2) ← g1.intro `b
