@@ -2,8 +2,8 @@ import Lean
 open Lean Meta Elab Tactic
 
 /-- Try to build a canonical inhabitant for the 2-argument projection shapes:
-    `A → B → B`, `A → B → A` (which also covers `A → A → A`).
-    Return `none` if the given `P` doesn't reduce to one of these. -/
+    `A → B → B`, `A → B → A` (covers `A → A → A` as well).
+    Return `none` if `P` is not one of these (up to defeq). -/
 private def mkProj2 (P : Expr) : MetaM (Option Expr) := do
   let P' ← whnf P
   match P' with
@@ -11,13 +11,13 @@ private def mkProj2 (P : Expr) : MetaM (Option Expr) := do
     let tail' ← whnf tail
     match tail' with
     | Expr.forallE _ B body _ =>
-      -- Case: A → B → B   (λ a b, b)
+      -- A → B → B  :  λ a b, b
       if (← isDefEq body B) then
         withLocalDecl `a .default A fun a => do
         withLocalDecl `b .default B fun b => do
           let lam ← mkLambdaFVars #[a, b] b
           return some lam
-      -- Case: A → B → A   (λ a b, a)  (covers A → A → A as well)
+      -- A → B → A  :  λ a b, a   (also matches A → A → A)
       else if (← isDefEq body A) then
         withLocalDecl `a .default A fun a => do
         withLocalDecl `b .default B fun b => do
@@ -29,10 +29,10 @@ private def mkProj2 (P : Expr) : MetaM (Option Expr) := do
   | _ => return none
 
 /-- Introduce all arrows/foralls; then
-    (1) exact with one of the freshly introduced locals,
-    (2) one-step `apply` a local function `h : X → tgt`, then close `⊢ X` with a local,
-    (3) if the goal is `((P → tgt) → tgt)` and `P` is a projection (`A → B → B` / `A → B → A` / `A → A → A`),
-        synthesize `p : P` and close by `fun h => h p`. -/
+    (1) close by exact if a freshly introduced local matches the target;
+    (2) otherwise try `apply h` for some local `h : X → tgt`. If the new subgoal is `⊢ X`,
+        first try to close it with a local; if that fails, synthesize a witness for `X`
+        using `mkProj2` (covers `A → B → B`, `A → B → A`, `A → A → A`). -/
 elab "intro_all_then_assumption" : tactic => do
   let g0 ← getMainGoal
   let (fs, g) ← g0.intros
@@ -57,34 +57,22 @@ elab "intro_all_then_assumption" : tactic => do
           match subs with
           | [sg] =>
             let need ← sg.getType
+            -- 2a) close ⊢ X with a local if possible
+            let mut closed := false
             for e in locals do
               if (← isDefEq (← inferType e) need) then
                 sg.assign e
                 replaceMainGoal []
                 return
+            -- 2b) otherwise, try to synthesize X via mkProj2
+            if !closed then
+              if let some p ← mkProj2 need then
+                sg.assign p
+                replaceMainGoal []
+                return
           | _ => pure ()
         catch _ => pure ()
       | _ => pure ()
-
-    -- (3) goal `((P → tgt) → tgt)` with `P` a projection; solve by giving `p : P`
-    -- We intro once to get `h : P → tgt`, then assign `h p`.
-    match (← whnf (← g.getType)) with
-    | Expr.forallE _ q r _ =>
-      let q' ← whnf q
-      match q' with
-      | Expr.forallE _ P body _ =>
-        let (hId, g1) ← g.intro `h
-        let h := mkFVar hId
-        let tgt1 ← g1.getType
-        if (← isDefEq body tgt1) then
-          if let some p ← mkProj2 P then
-            g1.assign (mkApp h p)   -- close with `h p`
-            replaceMainGoal []
-            return
-        -- If we didn’t succeed, restore the original goal.
-        replaceMainGoal [g]
-      | _ => pure ()
-    | _ => pure ()
 
     throwError "intro_all_then_assumption: no introduced hypothesis matches the goal"
 

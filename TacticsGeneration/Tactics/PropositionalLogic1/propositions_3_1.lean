@@ -7,6 +7,10 @@ uses the explaination that formulas of the form ((P→C)→C)⇒C((P→C)→C)�
 This is the case in general but not when P is true. The model fails to reason by
 checking the conditions under which the formula is intuitionistic and when it is not and check
 these conditions.
+
+The previous version of the tactic does not account for the following examples:
+((A → B → B) → C) → C : the reason is that ((A → B → B) → C) cannot be directly apply to obtain C,
+nor can be combined with anothe hypothesis. It is true because if A and B are true then B is true.
 -/
 
 /-- Introduce all arrows/foralls; then

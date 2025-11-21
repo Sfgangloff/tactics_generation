@@ -108,6 +108,18 @@ theorem t2 (A B : Prop) : A → B → B := by
   run_tac intro_all_then_assumption
 theorem t3 (A : Prop)   : A → A → A := by
   run_tac intro_all_then_assumption
+
+
+theorem propfmls_3_1_1 (A B : Prop) : (((A → A) → B) → B) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_1_2 (A : Prop) : (((A → A) → A) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_1 (A B C : Prop) : (A → (B → C) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_2 (A B : Prop) : (A → (A → B) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_3 (A B : Prop) : (A → (B → B) → A) := by
+  run_tac intro_all_then_assumption
 theorem propfmls_3_4_4 (A B : Prop) : ((A → B) → B → B) := by
   run_tac intro_all_then_assumption
 theorem propfmls_3_4_5 (A : Prop) : ((A → A) → A → A) := by

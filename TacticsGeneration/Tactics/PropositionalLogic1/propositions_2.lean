@@ -1,6 +1,12 @@
 import Lean
 open Lean Meta Elab Tactic
 
+/- Second attempt. Now the new tactic combine the new hypotheses
+created by intros which are of the form A → B with other hypotheses.
+For instance, in order to prove (A → B) → A → B. We store hypotheses
+(A → B) and A and then apply A to (A → B) in order to get B.
+-/
+
 /-- Introduce all arrows/foralls; then
     (1) solve if a freshly introduced local has the target type;
     (2) else, if there is `h : ∀ x : X, B x` and `e : X` among those locals
@@ -41,12 +47,34 @@ def intro_all_then_assumption : TacticM Unit := do
 -- Your example stays unchanged
 theorem t1 (A B : Prop) : A → B → A := by
   run_tac intro_all_then_assumption
-
 theorem t2 (A B : Prop) : A → B → B := by
   run_tac intro_all_then_assumption
 theorem t3 (A : Prop)   : A → A → A := by
   run_tac intro_all_then_assumption
 
+-- theorem propfmls_3_1_1 (A B : Prop) : (((A → A) → B) → B) := by
+--   run_tac intro_all_then_assumption
+-- theorem propfmls_3_1_2 (A : Prop) : (((A → A) → A) → A) := by
+--   run_tac intro_all_then_assumption
+
+theorem propfmls_3_3_1 (A B C : Prop) : (A → (B → C) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_2 (A B : Prop) : (A → (A → B) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_3 (A B : Prop) : (A → (B → B) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_4 (A B : Prop) : (A → (B → A) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_5 (A : Prop) : (A → (A → A) → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_3_6 (A B : Prop) : (A → (A → B) → B) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_4_1 (A B C : Prop) : ((A → B) → C → C) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_4_2 (A B : Prop) : ((A → B) → A → A) := by
+  run_tac intro_all_then_assumption
+theorem propfmls_3_4_3 (A B : Prop) : ((A → A) → B → B) := by
+  run_tac intro_all_then_assumption
 theorem propfmls_3_4_4 (A B : Prop) : ((A → B) → B → B) := by
   run_tac intro_all_then_assumption
 theorem propfmls_3_4_5 (A : Prop) : ((A → A) → A → A) := by
