@@ -10,7 +10,8 @@ This runs once after building the index, not during searches.
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from openai import OpenAI
+from claude_agent_sdk import query
+import anyio
 import os
 
 
@@ -28,23 +29,15 @@ class IndexEnricher:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
-        api_key: Optional[str] = None
+        model: str = "claude-sonnet-4"
     ):
         """
         Initialize the index enricher.
 
         Args:
-            model: OpenAI model to use (default: gpt-4o-mini)
-            api_key: OpenAI API key (if None, reads from openai_key.txt or env)
+            model: Model name (retained for compatibility; Claude Agent SDK may use its default)
         """
         self.model = model
-
-        # Load API key
-        if api_key is None:
-            api_key = self._load_api_key()
-
-        self.client = OpenAI(api_key=api_key)
 
         # Load prompt template
         self.system_prompt = self._load_prompt_template()
@@ -57,24 +50,7 @@ class IndexEnricher:
             'failed_generations': 0
         }
 
-    def _load_api_key(self) -> str:
-        """Load OpenAI API key from file or environment."""
-        # Try file first
-        project_root = Path(__file__).parent.parent.parent.parent
-        key_file = project_root / "openai_key.txt"
-
-        if key_file.exists():
-            return key_file.read_text().strip()
-
-        # Try environment variable
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if api_key:
-            return api_key
-
-        raise ValueError(
-            "OpenAI API key not found. "
-            "Please create openai_key.txt in project root or set OPENAI_API_KEY env var."
-        )
+        # Note: Claude Agent SDK handles authentication automatically via environment variables
 
     def _load_prompt_template(self) -> str:
         """Load the system prompt template."""
@@ -144,14 +120,14 @@ class IndexEnricher:
         # Has good docstring
         return False
 
-    def generate_description(
+    async def generate_description_async(
         self,
         name: str,
         definition: Dict[str, Any],
         source_context: Optional[str] = None
     ) -> str:
         """
-        Generate a description for a definition.
+        Async generate a description for a definition.
 
         Args:
             name: Name of the definition
@@ -165,27 +141,32 @@ class IndexEnricher:
         user_message = self._format_user_message(name, definition, source_context)
 
         try:
-            # Prepare API call parameters
-            api_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                "temperature": 0.2,  # Low temperature for consistency
-                "max_tokens": 200  # Keep descriptions concise
-            }
+            # Combine system and user prompts
+            full_prompt = f"{self.system_prompt}\n\n{user_message}\n\nPlease provide a concise description (max 200 characters)."
 
-            response = self.client.chat.completions.create(**api_params)
+            # Collect response from streaming API
+            response_text = ""
+            async for message in query(prompt=full_prompt):
+                response_text += str(message)
 
-            # Extract response
-            description = response.choices[0].message.content.strip()
+            description = response_text.strip()
 
             return description
 
         except Exception as e:
             print(f"    Error generating description: {e}")
             return self._generate_fallback_description(name, definition)
+
+    def generate_description(
+        self,
+        name: str,
+        definition: Dict[str, Any],
+        source_context: Optional[str] = None
+    ) -> str:
+        """
+        Synchronous wrapper for generate_description_async.
+        """
+        return anyio.run(self.generate_description_async, name, definition, source_context)
 
     def _format_user_message(
         self,

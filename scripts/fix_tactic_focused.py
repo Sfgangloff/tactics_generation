@@ -18,14 +18,14 @@ import sys
 import traceback
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from openai import OpenAI
+from claude_agent_sdk import query
+import anyio
 
 # Get the project root directory
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-OPENAI_MODEL = "gpt-4o"
-OPENAI_KEY_PATH = os.path.join(PROJECT_ROOT, "openai_key.txt")
+CLAUDE_MODEL = "claude-sonnet-4"  # Note: Claude Agent SDK may use its own default model
 
 # ------------------- Project detection -------------------
 
@@ -158,22 +158,8 @@ def extract_function_at_line(file_content: str, line_num: int) -> Tuple[Optional
 
     return def_text, def_start + 1, def_end + 1  # Convert to 1-indexed
 
-# ------------------- OpenAI -------------------
-
-def load_openai_client() -> OpenAI:
-    """Load OpenAI client with API key."""
-    key = None
-    if os.path.exists(OPENAI_KEY_PATH):
-        with open(OPENAI_KEY_PATH, "r", encoding="utf-8") as f:
-            key = f.read().strip()
-    else:
-        key = os.getenv("OPENAI_API_KEY")
-
-    if not key:
-        print("ERROR: No OpenAI API key found.", file=sys.stderr)
-        sys.exit(1)
-
-    return OpenAI(api_key=key, timeout=300.0)
+# ------------------- Claude Agent SDK -------------------
+# Note: Claude Agent SDK handles authentication automatically via environment variables
 
 def build_focused_prompt(func_text: str, errors: List[Dict], failing_tests: List = None) -> str:
     """Build a focused prompt with the function and its errors or failing tests."""
@@ -203,8 +189,8 @@ def build_focused_prompt(func_text: str, errors: List[Dict], failing_tests: List
 
     return prompt
 
-def call_openai_fix(client: OpenAI, func_text: str, errors: List[Dict], failing_tests: List = None) -> str:
-    """Call OpenAI to fix the specific function/theorem."""
+async def call_claude_fix_async(func_text: str, errors: List[Dict], failing_tests: List = None) -> str:
+    """Async call to Claude Agent SDK to fix the specific function/theorem."""
     system_prompt = """You are an expert Lean 4 metaprogramming assistant.
 Fix the given Lean code (function, theorem, or tactic) to resolve compilation errors.
 
@@ -223,18 +209,22 @@ Return ONLY the corrected code, maintaining the same structure (theorem/def/etc)
 
     user_prompt = build_focused_prompt(func_text, errors, failing_tests)
 
-    resp = client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-    )
+    # Combine system and user prompts
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-    if resp.choices and len(resp.choices) > 0:
-        return resp.choices[0].message.content
+    # Collect response from streaming API
+    response_text = ""
+    async for message in query(prompt=full_prompt):
+        response_text += str(message)
 
-    raise RuntimeError("OpenAI: no response content")
+    if not response_text:
+        raise RuntimeError("Claude Agent SDK: no response content")
+
+    return response_text
+
+def call_claude_fix(func_text: str, errors: List[Dict], failing_tests: List = None) -> str:
+    """Synchronous wrapper for async Claude call."""
+    return anyio.run(call_claude_fix_async, func_text, errors, failing_tests)
 
 def normalize_code(s: str) -> str:
     """Remove markdown fences if present."""
@@ -263,8 +253,6 @@ def main():
     if not os.path.exists(lean_path):
         print(f"ERROR: File not found: {lean_path}", file=sys.stderr)
         sys.exit(1)
-
-    client = load_openai_client()
 
     for iteration in range(1, args.max_iterations + 1):
         print(f"\n[focused_fix] === Iteration {iteration}/{args.max_iterations} ===")
@@ -342,14 +330,14 @@ def main():
         func_errors = [e for e in errors if start_line <= (e["line"] or 0) <= end_line]
         print(f"[focused_fix] Function has {len(func_errors)} error(s)")
 
-        # Call OpenAI to fix
-        print(f"[focused_fix] Calling OpenAI ({OPENAI_MODEL})...")
+        # Call Claude Agent SDK to fix
+        print(f"[focused_fix] Calling Claude Agent SDK...")
         try:
             # If we have test errors, pass failing tests to guide the fix
             if test_errors and not tactic_errors:
-                fixed_func = call_openai_fix(client, func_text, func_errors, failing_tests)
+                fixed_func = call_claude_fix(func_text, func_errors, failing_tests)
             else:
-                fixed_func = call_openai_fix(client, func_text, func_errors)
+                fixed_func = call_claude_fix(func_text, func_errors)
             fixed_func = normalize_code(fixed_func)
         except Exception as e:
             print(f"[focused_fix] API error: {e}")

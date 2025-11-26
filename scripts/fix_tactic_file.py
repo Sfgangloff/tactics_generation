@@ -26,14 +26,14 @@ import re
 import sys
 from pathlib import Path
 from typing import List, Dict, Optional
-from openai import OpenAI
+from claude_agent_sdk import query
+import anyio
 
 # Get the project root directory (parent of scripts/)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-OPENAI_MODEL = "gpt-5"
-OPENAI_KEY_PATH = os.path.join(PROJECT_ROOT, "openai_key.txt")
+CLAUDE_MODEL = "claude-sonnet-4"  # Note: Claude Agent SDK may use its own default model
 
 # ------------------- Project detection -------------------
 
@@ -106,23 +106,8 @@ def run_lean_check(file_path: str, treat_warnings_as_errors: bool) -> List[Dict]
 
     return diags
 
-# ------------------- OpenAI -------------------
-
-def load_openai_client() -> OpenAI:
-    """Load OpenAI client with API key from file or environment."""
-    key = None
-    if os.path.exists(OPENAI_KEY_PATH):
-        with open(OPENAI_KEY_PATH, "r", encoding="utf-8") as f:
-            key = f.read().strip()
-    else:
-        key = os.getenv("OPENAI_API_KEY")
-
-    if not key:
-        print("ERROR: No OpenAI API key found. Set OPENAI_API_KEY env var or create openai_key.txt",
-              file=sys.stderr)
-        sys.exit(1)
-
-    return OpenAI(api_key=key)
+# ------------------- Claude Agent SDK -------------------
+# Note: Claude Agent SDK handles authentication automatically via environment variables
 
 def load_prompt(filename: str) -> str:
     """Load a prompt template from the prompts/ directory."""
@@ -154,38 +139,36 @@ def build_user_prompt(lean_code: str, diags: List[Dict], treat_warnings_as_error
 
     return prompt
 
-def call_openai_fix(client: OpenAI, system_prompt: str, user_prompt: str) -> str:
-    """Call OpenAI to get corrected code with retry logic."""
+async def call_claude_fix_async(system_prompt: str, user_prompt: str) -> str:
+    """Async call to Claude Agent SDK with retry logic."""
     import time
 
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Set a custom timeout
-            client.timeout = 300.0  # 5 minutes
+            # Combine system and user prompts
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            resp = client.responses.create(
-                model=OPENAI_MODEL,
-                instructions=system_prompt,
-                input=[{"role": "user", "content": [{"type": "input_text", "text": user_prompt}]}],
-            )
+            # Collect response from streaming API with timeout
+            response_text = ""
+            async with anyio.fail_after(300.0):  # 5 minutes timeout
+                async for message in query(prompt=full_prompt):
+                    response_text += str(message)
 
-            # Extract text from response
-            if hasattr(resp, "output_text") and isinstance(resp.output_text, str):
-                return resp.output_text
-            if hasattr(resp, "output") and isinstance(resp.output, list):
-                for item in resp.output:
-                    content = getattr(item, "content", None)
-                    if isinstance(content, list):
-                        for seg in content:
-                            text = getattr(seg, "text", None)
-                            if isinstance(text, str):
-                                return text
-                    text2 = getattr(item, "text", None)
-                    if isinstance(text2, str):
-                        return text2
-            raise RuntimeError("OpenAI: could not extract text from response")
+            if not response_text:
+                raise RuntimeError("Claude Agent SDK: empty response")
 
+            return response_text
+
+        except TimeoutError:
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                print(f"[fix_tactic_file] Timeout (attempt {attempt+1}/{max_retries})")
+                print(f"[fix_tactic_file] Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"[fix_tactic_file] Timeout after {max_retries} attempts")
+                raise
         except Exception as e:
             if attempt < max_retries - 1:
                 wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
@@ -195,6 +178,10 @@ def call_openai_fix(client: OpenAI, system_prompt: str, user_prompt: str) -> str
             else:
                 print(f"[fix_tactic_file] API error after {max_retries} attempts: {e}")
                 raise
+
+def call_claude_fix(system_prompt: str, user_prompt: str) -> str:
+    """Synchronous wrapper for async Claude call."""
+    return anyio.run(call_claude_fix_async, system_prompt, user_prompt)
 
 # ------------------- Output normalizer -------------------
 
@@ -267,8 +254,7 @@ def main():
     print(f"[fix_tactic_file] Found {len(blocking)} blocking diagnostic(s).")
     print(f"[fix_tactic_file] Starting repair with max {args.max_iterations} iteration(s)...")
 
-    # Load OpenAI client and prompts
-    client = load_openai_client()
+    # Load prompts
     system_prompt = load_prompt("fix_tactic_system.txt")
 
     # Repair loop
@@ -278,9 +264,9 @@ def main():
         # Build user prompt with current code and diagnostics
         user_prompt = build_user_prompt(lean_code, diags, treat_warn)
 
-        # Call OpenAI
-        print(f"[fix_tactic_file] Calling OpenAI ({OPENAI_MODEL})...")
-        raw_response = call_openai_fix(client, system_prompt, user_prompt)
+        # Call Claude Agent SDK
+        print(f"[fix_tactic_file] Calling Claude Agent SDK...")
+        raw_response = call_claude_fix(system_prompt, user_prompt)
         candidate = normalize_lean_source(raw_response)
 
         # Check if code is identical

@@ -15,19 +15,19 @@ from a JSONL dataset whose entries look like:
   "challenge_test_list": []
 }
 
-For each new item, call an OpenAI model to translate the Python code + tests
+For each new item, call Claude Agent SDK to translate the Python code + tests
 into Lean 4 (constrained to Batteries/Std), write a .lean file, and
 append a line to an output JSONL file.
 
 Usage:
-  1) Put your API key in openai_key.txt   (or set OPENAI_API_KEY)
+  1) Configure Claude Agent SDK authentication (see SDK documentation)
   2) Few-shots live in few_shots.txt
   3) Run:
      python scripts/convert_to_lean.py \
         --input data/mbpp.jsonl \
         --output data/mblp.jsonl \
         --n 3 \
-        --model gpt-5 \
+        --model claude-sonnet-4 \
         --timeout 6000 \
         --lean-out TacticsGeneration/Tasks \
         --style Imperative
@@ -47,13 +47,13 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Set
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
-# --- OpenAI SDK (Responses API) ---
+# --- Claude Agent SDK ---
 try:
-    from openai import OpenAI
+    from claude_agent_sdk import query
+    import anyio
 except Exception:
-    print("ERROR: Could not import openai SDK. Install with: pip install openai", file=sys.stderr)
+    print("ERROR: Could not import claude_agent_sdk. Install with: pip install claude-agent-sdk", file=sys.stderr)
     raise
 
 # --- Lean writer helper ---
@@ -196,63 +196,47 @@ def generate_style_specific_output(base_output: str, style: str) -> str:
 
     return str(new_path)
 
-# ---------------- OpenAI call -----------------
+# ---------------- Claude Agent SDK call -----------------
 
-def call_openai(
-    client: OpenAI,
-    model: str,
+async def call_claude_async(
     system: str,
     user_prompt: str,
     max_retries: int,
     base_delay: float,
     request_timeout: float,
 ) -> Dict[str, Any]:
+    """Async call to Claude Agent SDK with retry logic."""
     last_err: Optional[BaseException] = None
     for attempt in range(max_retries):
         try:
-            print("[convert_to_lean] Calling response", flush=True)
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(
-                    lambda: client.responses.create(
-                        model=model,
-                        instructions=system,
-                        input=[{
-                            "role": "user",
-                            "content": [{"type": "input_text", "text": user_prompt}],
-                        }],
-                    )
-                )
-                try:
-                    resp = fut.result(timeout=request_timeout)
-                except FuturesTimeout:
-                    raise TimeoutError(f"OpenAI call exceeded {request_timeout}s")
+            print("[convert_to_lean] Calling Claude Agent SDK", flush=True)
+
+            # Combine system and user prompts
+            full_prompt = f"{system}\n\n{user_prompt}"
+
+            # Collect response from streaming API
+            response_text = ""
+            async with anyio.fail_after(request_timeout):
+                async for message in query(prompt=full_prompt):
+                    response_text += str(message)
 
             print("[convert_to_lean] Response received", flush=True)
 
-            text = getattr(resp, "output_text", None)
-            if isinstance(text, str):
-                obj = extract_json(text)
-                if obj is not None:
-                    return obj
+            # Try to extract JSON from response
+            obj = extract_json(response_text)
+            if obj is not None:
+                return obj
 
-            if hasattr(resp, "output") and isinstance(resp.output, list):
-                for item in resp.output:
-                    content = getattr(item, "content", None)
-                    if isinstance(content, list):
-                        for seg in content:
-                            seg_text = getattr(seg, "text", None)
-                            if isinstance(seg_text, str):
-                                obj = extract_json(seg_text)
-                                if obj is not None:
-                                    return obj
-                    itext = getattr(item, "text", None)
-                    if isinstance(itext, str):
-                        obj = extract_json(itext)
-                        if obj is not None:
-                            return obj
+            # If no JSON found, return raw response
+            return {"raw_response": response_text}
 
-            return {"raw_response": resp.model_dump() if hasattr(resp, "model_dump") else str(resp)}
-
+        except TimeoutError:
+            print(f"[convert_to_lean] attempt {attempt+1} timed out after {request_timeout}s", flush=True)
+            last_err = TimeoutError(f"Claude call exceeded {request_timeout}s")
+            if attempt < max_retries - 1:
+                backoff_sleep(attempt, base_delay=base_delay)
+            else:
+                raise last_err
         except Exception as e:
             print(f"[convert_to_lean] attempt {attempt+1} failed: {e}", flush=True)
             last_err = e
@@ -262,7 +246,17 @@ def call_openai(
                 raise
     if last_err:
         raise last_err
-    raise RuntimeError("Unknown failure in call_openai")
+    raise RuntimeError("Unknown failure in call_claude")
+
+def call_claude(
+    system: str,
+    user_prompt: str,
+    max_retries: int,
+    base_delay: float,
+    request_timeout: float,
+) -> Dict[str, Any]:
+    """Synchronous wrapper for async Claude call."""
+    return anyio.run(call_claude_async, system, user_prompt, max_retries, base_delay, request_timeout)
 
 # ---------------- CLI -----------------
 
@@ -284,8 +278,8 @@ def parse_args() -> Args:
     p.add_argument("--input", required=True, help="Path to input JSONL file.")
     p.add_argument("--output", required=True, help="Path to output JSONL file (appended; existing tasks are skipped).")
     p.add_argument("--n", type=int, default=None, help="Process at most N *new* items (skip those already in --output).")
-    p.add_argument("--model", default="gpt-5", help="OpenAI model (Responses API).")
-    p.add_argument("--temperature", type=float, default=0.0)  # intentionally unused with some models
+    p.add_argument("--model", default="claude-sonnet-4", help="Claude model (note: model parameter retained for compatibility but Claude Agent SDK may use its default).")
+    p.add_argument("--temperature", type=float, default=0.0)  # intentionally unused
     p.add_argument("--max-retries", type=int, default=5)
     p.add_argument("--retry-base-delay", type=float, default=2.0)
     p.add_argument("--timeout", type=float, default=120.0, help="Per-request timeout in seconds.")
@@ -329,22 +323,8 @@ def main():
             # Touch the file (parent must exist).
             open(style_specific_output, "a", encoding="utf-8").close()
 
-    # --- Load API key ---
-    key_path = os.path.join(PROJECT_ROOT, "openai_key.txt")
-    if os.path.exists(key_path):
-        api_key = open(key_path, "r", encoding="utf-8").read().strip()
-    else:
-        api_key = os.environ.get("OPENAI_API_KEY")
-
-    if not api_key:
-        print("ERROR: Put your key in 'openai_key.txt' or set OPENAI_API_KEY.", file=sys.stderr)
-        sys.exit(1)
-
-    client = OpenAI(api_key=api_key)
-    try:
-        client = client.with_options(timeout=args.timeout)
-    except Exception:
-        pass
+    # Note: Claude Agent SDK handles authentication automatically via environment variables
+    # No explicit client initialization needed
 
     processed_new = 0   # number of NEW items we translated this run
     skipped = 0         # number of items skipped because already in output
@@ -400,9 +380,7 @@ def main():
         print(f"[convert_to_lean] Task {task_id} initiated", flush=True)
 
         try:
-            result = call_openai(
-                client=client,
-                model=args.model,
+            result = call_claude(
                 system=SYSTEM_INSTRUCTIONS,
                 user_prompt=user_prompt,
                 max_retries=args.max_retries,

@@ -5,7 +5,7 @@ fix_lean.py
 
 Run Lean (via Lake if present). If there are *any* diagnostics (errors or, by
 default, warnings), look up the Python reference code by task_id from a JSONL
-dataset, ask gpt-5 to repair the Lean file (eliminating errors AND warnings),
+dataset, ask Claude Agent SDK to repair the Lean file (eliminating errors AND warnings),
 then rewrite the file in place.
 
 Usage:
@@ -30,14 +30,14 @@ import sys
 import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
-from openai import OpenAI
+from claude_agent_sdk import query
+import anyio
 
 # Get the project root directory (parent of scripts/)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-OPENAI_MODEL = "gpt-5"
-OPENAI_KEY_PATH = os.path.join(PROJECT_ROOT, "openai_key.txt")  # or env OPENAI_API_KEY
+CLAUDE_MODEL = "claude-sonnet-4"  # Note: Claude Agent SDK may use its own default model
 
 # ------------------- Project detection -------------------
 
@@ -135,18 +135,8 @@ def extract_python_code(jsonl_path: str, task_id: int) -> str:
     print(f"ERROR: No entry with task_id={task_id} found in {jsonl_path}")
     sys.exit(1)
 
-# ------------------- OpenAI -------------------
-
-def load_openai_client() -> OpenAI:
-    key = None
-    if os.path.exists(OPENAI_KEY_PATH):
-        key = open(OPENAI_KEY_PATH, "r", encoding="utf-8").read().strip()
-    else:
-        key = os.environ.get("OPENAI_API_KEY")
-    if not key:
-        print("Missing OpenAI key. Provide via openai_key.txt or OPENAI_API_KEY.")
-        sys.exit(1)
-    return OpenAI(api_key=key)
+# ------------------- Claude Agent SDK -------------------
+# Note: Claude Agent SDK handles authentication automatically via environment variables
 
 def load_prompt(filename: str) -> str:
     """Load a prompt template from the prompts/ directory."""
@@ -207,26 +197,24 @@ def build_user_prompt(lean_code: str, python_code: Optional[str], diags: List[Di
 
     return prompt
 
-def call_openai_fix(client: OpenAI, system_prompt: str, user_prompt: str) -> str:
-    resp = client.responses.create(
-        model=OPENAI_MODEL,
-        instructions=system_prompt,
-        input=[{"role": "user", "content": [{"type": "input_text", "text": user_prompt}]}],
-    )
-    if hasattr(resp, "output_text") and isinstance(resp.output_text, str):
-        return resp.output_text
-    if hasattr(resp, "output") and isinstance(resp.output, list):
-        for item in resp.output:
-            content = getattr(item, "content", None)
-            if isinstance(content, list):
-                for seg in content:
-                    text = getattr(seg, "text", None)
-                    if isinstance(text, str):
-                        return text
-            text2 = getattr(item, "text", None)
-            if isinstance(text2, str):
-                return text2
-    raise RuntimeError("OpenAI: could not extract text from response")
+async def call_claude_fix_async(system_prompt: str, user_prompt: str) -> str:
+    """Async call to Claude Agent SDK for fixing code."""
+    # Combine system and user prompts
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+    # Collect response from streaming API
+    response_text = ""
+    async for message in query(prompt=full_prompt):
+        response_text += str(message)
+
+    if not response_text:
+        raise RuntimeError("Claude Agent SDK: empty response")
+
+    return response_text
+
+def call_claude_fix(system_prompt: str, user_prompt: str) -> str:
+    """Synchronous wrapper for async Claude call."""
+    return anyio.run(call_claude_fix_async, system_prompt, user_prompt)
 
 # ------------------- Output normalizer -------------------
 
@@ -321,8 +309,7 @@ def main():
             print("[fix_lean] Lean compiles cleanly (no errors, no warnings).")
         return
 
-    print(f"[fix_lean] Found {len(blocking)} blocking diagnostic(s). Sending to OpenAI...")
-    client = load_openai_client()
+    print(f"[fix_lean] Found {len(blocking)} blocking diagnostic(s). Sending to Claude Agent SDK...")
 
     # Load style-specific base prompt + conditional API hints
     SYSTEM_BASE = load_system_base_for_style(style)
@@ -337,7 +324,7 @@ def main():
 
     fixed_code = None
     for attempt in range(args.max_repair_rounds):
-        raw = call_openai_fix(client, system_prompt, user_prompt)
+        raw = call_claude_fix(system_prompt, user_prompt)
         candidate = normalize_lean_source(raw)
 
         # If identical, strengthen the instruction and retry

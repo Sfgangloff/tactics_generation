@@ -12,58 +12,34 @@ import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from openai import OpenAI
+from claude_agent_sdk import query
+import anyio
 
 
 class TaskAnalyzer:
     """
     Analyzes programming tasks and extracts search keywords using LLM.
 
-    Uses OpenAI API to convert natural language descriptions into structured
+    Uses Claude Agent SDK to convert natural language descriptions into structured
     keywords for searching Lean library functions.
     """
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
-        api_key: Optional[str] = None
+        model: str = "claude-sonnet-4"
     ):
         """
         Initialize the task analyzer.
 
         Args:
-            model: OpenAI model to use (default: gpt-4o-mini)
-            api_key: OpenAI API key (if None, reads from openai_key.txt or env)
+            model: Model name (retained for compatibility; Claude Agent SDK may use its default)
         """
         self.model = model
-
-        # Load API key
-        if api_key is None:
-            api_key = self._load_api_key()
-
-        self.client = OpenAI(api_key=api_key)
 
         # Load prompt template
         self.system_prompt = self._load_prompt_template()
 
-    def _load_api_key(self) -> str:
-        """Load OpenAI API key from file or environment."""
-        # Try file first
-        project_root = Path(__file__).parent.parent.parent.parent
-        key_file = project_root / "openai_key.txt"
-
-        if key_file.exists():
-            return key_file.read_text().strip()
-
-        # Try environment variable
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if api_key:
-            return api_key
-
-        raise ValueError(
-            "OpenAI API key not found. "
-            "Please create openai_key.txt in project root or set OPENAI_API_KEY env var."
-        )
+        # Note: Claude Agent SDK handles authentication automatically via environment variables
 
     def _load_prompt_template(self) -> str:
         """Load the system prompt template."""
@@ -74,14 +50,14 @@ class TaskAnalyzer:
 
         return prompt_path.read_text(encoding='utf-8')
 
-    def analyze(
+    async def analyze_async(
         self,
         task: str,
         use_cache: bool = True,
         database=None
     ) -> Dict[str, Any]:
         """
-        Analyze a task description and extract keywords.
+        Async analyze a task description and extract keywords.
 
         Args:
             task: Natural language task description
@@ -104,29 +80,18 @@ class TaskAnalyzer:
             if cached:
                 return cached
 
-        # Call OpenAI API
+        # Call Claude Agent SDK
         try:
-            # Prepare API call parameters
-            api_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": task}
-                ],
-                "temperature": 0.0  # Deterministic output
-            }
+            # Combine system and user prompts
+            full_prompt = f"{self.system_prompt}\n\n{task}\n\nPlease respond with a JSON object containing keywords, types, operations, paradigm, and domain fields."
 
-            # Only use JSON mode for models that support it
-            if "gpt-4o" in self.model or "gpt-3.5-turbo" in self.model:
-                api_params["response_format"] = {"type": "json_object"}
+            # Collect response from streaming API
+            response_text = ""
+            async for message in query(prompt=full_prompt):
+                response_text += str(message)
 
-            response = self.client.chat.completions.create(**api_params)
-
-            # Extract response
-            content = response.choices[0].message.content
-
-            # Parse JSON
-            result = json.loads(content)
+            # Parse JSON from response
+            result = json.loads(response_text)
 
             # Validate structure
             required_fields = ["keywords", "types", "operations", "paradigm", "domain"]
@@ -142,14 +107,25 @@ class TaskAnalyzer:
 
         except json.JSONDecodeError as e:
             print(f"Warning: Failed to parse JSON response: {e}")
-            print(f"Response content: {content}")
+            print(f"Response content: {response_text if 'response_text' in locals() else 'N/A'}")
             # Return a fallback result
             return self._extract_fallback_keywords(task)
 
         except Exception as e:
-            print(f"Error calling OpenAI API: {e}")
+            print(f"Error calling Claude Agent SDK: {e}")
             # Return a fallback result
             return self._extract_fallback_keywords(task)
+
+    def analyze(
+        self,
+        task: str,
+        use_cache: bool = True,
+        database=None
+    ) -> Dict[str, Any]:
+        """
+        Synchronous wrapper for analyze_async.
+        """
+        return anyio.run(self.analyze_async, task, use_cache, database)
 
     def _extract_fallback_keywords(self, task: str) -> Dict[str, Any]:
         """
