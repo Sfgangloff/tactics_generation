@@ -9,3 +9,7 @@ root = "Main"
 [[require]]
 name = "batteries"
 scope = "leanprover-community"
+
+[[require]]
+name = "Qq"
+scope = "leanprover-community"

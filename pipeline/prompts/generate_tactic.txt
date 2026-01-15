@@ -9,70 +9,160 @@ Generate a Lean 4 tactic based on the following specification.
 ## Configuration:
 - Use Mathlib: {use_mathlib}
 
-## Lean 4 Metaprogramming Guidelines
+## Lean 4 Tactic Programming Guide
 
-### Basic Structure
-A tactic in Lean 4 is defined using the `Lean.Elab.Tactic` framework:
+Reference: https://github.com/mirefek/lean-tactic-programming-guide
+
+### Core Concepts
+
+A proof in Lean is a term with holes called metavariables. Most tactic steps fill one hole by assigning a metavariable, continuing until all goals are closed.
+
+### Key Data Structures
+
+- `Lean.Expr`: Represents Lean expressions, types, and proofs
+- `Qq` library: Provides convenient notation for building expressions
+- `MVarId`: Metavariable identifier (represents a goal)
+- `FVarId`: Free variable identifier (local hypotheses)
+- `TacticM`: The tactic monad
+
+### Basic Imperative Programming
+
+```lean
+def myCode : Lean.Elab.Tactic.TacticM Unit := do
+  Lean.logInfo "Running tactic"
+  let goal ← getMainGoal
+  -- do something with goal
+```
+
+### Tactic Implementation Examples
 
 ```lean
 import Lean
+import Qq
 
-open Lean Elab Tactic Meta
+open Lean Meta Elab.Tactic Qq
 
-elab "my_tactic" : tactic => do
-  -- tactic implementation
-  return ()
+-- Close a goal of type True
+def runTrivial : TacticM Unit := do
+  let goal : MVarId ← getMainGoal
+  try
+    goal.assignIfDefEq q(True.intro)
+  catch _ =>
+    let goalType ← goal.getType
+    throwError "tactic runTrivial failed, goal has type `{goalType}` not `True`"
+
+-- Search local context for matching assumption
+def runAssumption : TacticM Unit :=
+  withMainContext do
+    let goal ← getMainGoal
+    let ctx ← getLCtx
+    for (decl : LocalDecl) in ctx do
+      if decl.kind != .default then continue
+      try
+        goal.assignIfDefEq (Expr.fvar decl.fvarId)
+        return
+      catch _ =>
+        pure ()
+    throwError "Assumption not found"
+
+-- Split And goal into two subgoals
+def runConstructor : TacticM Unit := do
+  withMainContext do
+    let goal ← getMainGoal
+    let goalType ← goal.getType
+    let_expr And a b := goalType | throwError "Goal not of form `_ ∧ _`"
+    let left ← mkFreshExprSyntheticOpaqueMVar a (tag := `left)
+    let right ← mkFreshExprSyntheticOpaqueMVar b (tag := `right)
+    goal.assign (← mkAppM ``And.intro #[left, right])
+    replaceMainGoal [left.mvarId!, right.mvarId!]
+
+-- Introduce a forall/implication
+def runIntro (name : Name) : TacticM Unit :=
+  withMainContext do
+    let goal ← getMainGoal
+    let lctx ← getLCtx
+    let .forallE _ type body c ← goal.getType
+      | throwError "Goal not of form `_ → _` or `∀ _, _`"
+    let fvarId : FVarId ← mkFreshFVarId
+    let lctx' := lctx.mkLocalDecl fvarId name type c
+    let fvar : Expr := .fvar fvarId
+    let body := body.instantiate1 fvar
+    withLCtx lctx' (← getLocalInstances) do
+      let newMVar ← mkFreshExprSyntheticOpaqueMVar body
+      let newVal ← mkLambdaFVars #[fvar] newMVar
+      goal.assign newVal
+      replaceMainGoal [newMVar.mvarId!]
 ```
 
-### Key Metaprogramming Concepts
+### Syntax and Elaboration
 
-1. **Accessing the Goal**: Use `getMainGoal` to get the current goal
-2. **Getting Goal Type**: Use `getMVarType` to get the type of a metavariable
-3. **Closing Goals**: Use `closeMainGoal` or `assignExprMVar`
-4. **Creating Expressions**: Use `mkAppM`, `mkConst`, etc.
-5. **Running Other Tactics**: Use `evalTactic` with syntax quotations
-
-### Common Patterns
+Three ways to define tactic syntax:
 
 ```lean
--- Get the main goal and its type
-elab "inspect_goal" : tactic => do
-  let goal ← getMainGoal
-  let goalType ← getMVarType goal
-  logInfo m!"Goal type: {goalType}"
+-- 1. Simple macro (delegates to existing tactics)
+macro "my_trivial" : tactic => `(tactic| exact True.intro)
+macro "my_constructor" : tactic => `(tactic| apply And.intro)
 
--- Apply a lemma
-elab "apply_lemma" : tactic => do
-  let goal ← getMainGoal
-  let lemmaExpr ← mkConst ``MyLemma
-  let newGoals ← apply goal lemmaExpr
-  replaceMainGoal newGoals
+-- 2. Direct elab (custom implementation)
+elab "my_assumption" : tactic => runAssumption
+
+elab "my_intro" a:ident : tactic => do
+  let aName : Name := a.getId
+  runIntro aName
+
+-- 3. Separate syntax and elaboration rules
+syntax "my_intro'" ident : tactic
+
+elab_rules : tactic
+| `(tactic| my_intro' $h:ident) => runIntro h.getId
+```
+
+### Working with Terms and Types
+
+```lean
+-- Elaborate a term from syntax
+elab "my_check" e:term : tactic => do
+  withMainContext do
+    let e : Expr ← elabTerm e none
+    let t ← inferType e
+    Lean.logInfo m!"{e} : {t}"
 
 -- Run another tactic
 elab "my_wrapper" : tactic => do
   evalTactic (← `(tactic| simp))
 ```
 
-### Working with Expressions
+### Common Patterns
 
 ```lean
--- Check if expression matches a pattern
-def isAddition (e : Expr) : Bool :=
-  e.isAppOfArity ``HAdd.hAdd 6
+-- Get goal type and match against structure
+withMainContext do
+  let goal ← getMainGoal
+  let goalType ← goal.getType
+  -- Pattern match on goalType
 
--- Decompose an application
-def getAppArgs (e : Expr) : Array Expr :=
-  e.getAppArgs
+-- Iterate over local context
+let ctx ← getLCtx
+for decl in ctx do
+  let fvarType ← inferType (Expr.fvar decl.fvarId)
+  -- do something with each hypothesis
+
+-- Create new goals
+let newGoal ← mkFreshExprSyntheticOpaqueMVar targetType
+replaceMainGoal [newGoal.mvarId!]
+
+-- Assign proof term to goal
+goal.assign proofExpr
 ```
 
 {mathlib_section}
 
 ## Requirements
 1. The tactic must compile without errors
-2. Include proper imports at the top of the file
+2. Include proper imports: `import Lean` and optionally `import Qq`
 3. Use `open Lean Elab Tactic Meta` for convenience
 4. Add a brief doc comment explaining the tactic
-5. Include at least one example usage with `example` or `#check`
+5. Include at least one example usage demonstrating the tactic
 
 ## Output Format
 Return ONLY the Lean 4 code, starting with imports. Do not include any markdown code blocks or explanations outside the code.
