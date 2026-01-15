@@ -1,0 +1,373 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\geometry{margin=1in}
+
+% Lean code styling
+\lstdefinelanguage{Lean}{
+  keywords={def, theorem, lemma, example, import, open, do, let, if, then, else, for, in, return, by, run_tac, TacticM, Unit, Prop, Type},
+  keywordstyle=\color{blue}\bfseries,
+  ndkeywords={getMainGoal, withMainContext, getLCtx, inferType, isDefEq, assign, throwError},
+  ndkeywordstyle=\color{purple},
+  identifierstyle=\color{black},
+  sensitive=true,
+  comment=[l]{--},
+  morecomment=[s]{/-}{-/},
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{orange},
+  morestring=[b]",
+}
+
+\lstset{
+  language=Lean,
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  tabsize=2,
+}
+
+\title{Automated Tactic Generation for Lean 4 \\
+  \large From Informal Specifications to Metaprogramming Code}
+
+\author{
+  % Authors here
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present a pipeline for automatically generating Lean 4 tactics from informal natural language specifications. Our system leverages large language models (LLMs) to translate high-level descriptions of desired proof automation into working metaprogramming code. The pipeline includes an iterative repair mechanism that uses compiler feedback to fix errors in generated code. We describe the architecture, design choices, and evaluate the system on propositional logic tactics.
+\end{abstract}
+
+\section{Introduction}
+
+Interactive theorem provers like Lean 4 have become increasingly important tools for formalizing mathematics and verifying software. A key feature of these systems is their extensibility through \emph{tactics}---procedures that automate proof construction. However, writing tactics requires expertise in both the domain (e.g., mathematics) and metaprogramming, creating a barrier for many users.
+
+This paper presents a system that bridges this gap by automatically generating Lean 4 tactics from informal natural language descriptions. Given a specification like ``create a tactic that proves implications by introducing hypotheses and searching the context,'' our system produces working metaprogramming code that can be used in proofs.
+
+\subsection{Contributions}
+
+\begin{itemize}
+  \item A modular pipeline architecture for LLM-based tactic generation
+  \item An iterative repair mechanism using Lean compiler feedback
+  \item Integration with the Lean 4 metaprogramming framework
+  \item Evaluation on propositional logic tactic generation
+\end{itemize}
+
+\section{Background}
+
+\subsection{Lean 4 and Metaprogramming}
+
+Lean 4 is a functional programming language and interactive theorem prover. Unlike its predecessor Lean 3, Lean 4 provides a unified metaprogramming framework where tactics are written in Lean itself.
+
+A tactic in Lean 4 operates in the \texttt{TacticM} monad, which provides access to the proof state. The key components are:
+
+\begin{itemize}
+  \item \textbf{Goals}: Represented as metavariables (\texttt{MVarId}) that need to be assigned proof terms
+  \item \textbf{Local context}: The hypotheses available in the current proof state
+  \item \textbf{Expressions}: The \texttt{Expr} type represents Lean terms, types, and proofs
+\end{itemize}
+
+\begin{lstlisting}[caption={A simple tactic that searches the local context}]
+def assumption_tactic : TacticM Unit :=
+  withMainContext do
+    let goal <- getMainGoal
+    let ctx <- getLCtx
+    for decl in ctx do
+      try
+        goal.assignIfDefEq (Expr.fvar decl.fvarId)
+        return
+      catch _ => pure ()
+    throwError "No matching assumption found"
+\end{lstlisting}
+
+\subsection{Large Language Models for Code Generation}
+
+Recent advances in large language models have demonstrated remarkable capabilities in code generation. Models like GPT-4 and Claude can generate syntactically correct code in many programming languages when given natural language descriptions.
+
+However, generating \emph{correct} code for specialized domains like theorem prover metaprogramming remains challenging due to:
+\begin{itemize}
+  \item Limited training data for niche languages
+  \item Complex type systems and semantic constraints
+  \item The need for domain-specific knowledge
+\end{itemize}
+
+\section{System Architecture}
+
+Our pipeline consists of four main stages: analysis, generation, validation, and repair.
+
+\subsection{Overview}
+
+\begin{figure}[h]
+\centering
+\begin{verbatim}
++-------------------+
+| Informal Request  |
++--------+----------+
+         |
+         v
++-------------------+
+| 1. Analyze        | --> Structured specification
++--------+----------+
+         |
+         v
++-------------------+
+| 2. Generate       | --> Lean 4 metaprogramming code
++--------+----------+
+         |
+         v
++-------------------+
+| 3. Validate       | --> Compile with Lake
++--------+----------+
+         |
+    +----+----+
+    | Errors? |
+    +----+----+
+    Yes  |  No
+    v    |
++-------+|
+| Repair||---> Output validated tactic
++---+---+|
+    |    |
+    +----+ (retry up to N rounds)
+\end{verbatim}
+\caption{Pipeline architecture}
+\end{figure}
+
+\subsection{Analysis Stage}
+
+The analysis stage extracts structured information from the informal request:
+
+\begin{itemize}
+  \item \textbf{Tactic name}: A suitable identifier for the tactic
+  \item \textbf{Purpose}: What the tactic should accomplish
+  \item \textbf{Input types}: What kinds of goals the tactic operates on
+  \item \textbf{Expected behavior}: Step-by-step description of the algorithm
+  \item \textbf{Edge cases}: Potential failure modes to handle
+\end{itemize}
+
+This structured representation guides the generation stage and helps produce more focused code.
+
+\subsection{Generation Stage}
+
+The generation stage produces Lean 4 code based on the structured specification. We provide the LLM with:
+
+\begin{enumerate}
+  \item The structured specification from the analysis stage
+  \item A comprehensive tutorial on Lean 4 metaprogramming (based on \cite{tactic-guide})
+  \item Example tactic implementations
+  \item The required output format
+\end{enumerate}
+
+\subsubsection{Output Format}
+
+Generated tactics follow a standardized format:
+
+\begin{lstlisting}[caption={Required output format}]
+import Lean
+open Lean Meta Elab.Tactic
+
+/-- Documentation for the tactic. -/
+def tactic_name : TacticM Unit := do
+  -- Implementation
+
+-- Test theorems
+theorem test_1 (A B : Prop) : ... := by
+  run_tac tactic_name
+\end{lstlisting}
+
+The \texttt{run\_tac} command allows invoking \texttt{TacticM} functions directly in proofs, enabling immediate testing of generated tactics.
+
+\subsection{Validation Stage}
+
+Generated code is validated by compiling it with the Lean toolchain:
+
+\begin{verbatim}
+lake env lean <generated_file.lean>
+\end{verbatim}
+
+The validator parses compiler output to extract:
+\begin{itemize}
+  \item Errors with line numbers and messages
+  \item Warnings (optionally treated as errors)
+\end{itemize}
+
+\subsection{Repair Stage}
+
+When validation fails, the repair stage attempts to fix the code by:
+
+\begin{enumerate}
+  \item Providing the LLM with the original code and error messages
+  \item Requesting a corrected version
+  \item Re-validating the result
+\end{enumerate}
+
+This process repeats up to a configurable maximum number of rounds (default: 4).
+
+\section{Design Choices}
+
+\subsection{Model Abstraction}
+
+The pipeline supports multiple LLM providers through an abstract interface:
+
+\begin{lstlisting}[language=Python,caption={LLM abstraction layer}]
+class LLMModel(ABC):
+    @abstractmethod
+    def generate(self, prompt: str,
+                 system: Optional[str] = None) -> str:
+        pass
+\end{lstlisting}
+
+This design allows easy switching between providers (OpenAI, Anthropic) and facilitates future extensions to local models.
+
+\subsection{Mathlib Configuration}
+
+The system supports an optional Mathlib dependency through a configuration flag. When enabled:
+\begin{itemize}
+  \item Generated tactics can import Mathlib modules
+  \item The prompt includes Mathlib-specific guidance
+  \item More sophisticated mathematical tactics become possible
+\end{itemize}
+
+When disabled, tactics are restricted to core Lean and the Batteries library, ensuring minimal dependencies.
+
+\subsection{Tutorial Integration}
+
+We integrate content from the Lean Tactic Programming Guide \cite{tactic-guide} directly into the generation prompt. This provides:
+\begin{itemize}
+  \item Concrete examples of working tactics
+  \item Common metaprogramming patterns
+  \item Idiomatic Lean 4 style
+\end{itemize}
+
+\subsection{Test-Driven Output}
+
+Generated files include test theorems that verify the tactic works correctly. This serves multiple purposes:
+\begin{itemize}
+  \item Validates that the tactic handles intended cases
+  \item Demonstrates generalization beyond specific examples
+  \item Provides documentation through examples
+\end{itemize}
+
+\section{Evaluation}
+
+\subsection{Experimental Setup}
+
+% TODO: Add experimental details
+
+\subsection{Results}
+
+% TODO: Add results
+
+\subsection{Case Study: Propositional Logic Tactics}
+
+We evaluated the system on generating tactics for intuitionistic propositional logic. Example specification:
+
+\begin{quote}
+``Create a tactic that proves implications of the form $A \to B \to A$ or $A \to B \to B$ by introducing hypotheses and selecting the appropriate one.''
+\end{quote}
+
+The system generated:
+
+\begin{lstlisting}[caption={Generated propositional logic tactic}]
+def proj_or_swap : TacticM Unit := do
+  let g0 <- getMainGoal
+  let (_, g1) <- g0.intro `a
+  let (_, g2) <- g1.intro `b
+  replaceMainGoal [g2]
+
+  withMainContext do
+    let goal <- getMainGoal
+    let ctx <- getLCtx
+    let some da := ctx.findFromUserName? `a
+      | throwError "could not find `a`"
+    let some db := ctx.findFromUserName? `b
+      | throwError "could not find `b`"
+
+    let tgt <- goal.getType
+    let ta <- inferType (.fvar da.fvarId)
+    if (<- isDefEq ta tgt) then
+      goal.assign (.fvar da.fvarId)
+    else
+      goal.assign (.fvar db.fvarId)
+
+  replaceMainGoal []
+\end{lstlisting}
+
+\section{Related Work}
+
+\subsection{LLM-Based Theorem Proving}
+
+% TODO: Discuss related work on LLMs for theorem proving
+
+\subsection{Tactic Learning}
+
+% TODO: Discuss tactic learning approaches
+
+\subsection{Program Synthesis}
+
+% TODO: Discuss program synthesis
+
+\section{Limitations and Future Work}
+
+\subsection{Current Limitations}
+
+\begin{itemize}
+  \item Generated tactics may be overly specific to the examples in the specification
+  \item Complex tactics requiring deep mathematical insight remain challenging
+  \item The repair mechanism has limited ability to fix fundamental design errors
+\end{itemize}
+
+\subsection{Future Directions}
+
+\begin{itemize}
+  \item Integration with proof search to guide tactic design
+  \item Learning from existing Mathlib tactics
+  \item Interactive refinement with user feedback
+  \item Formal verification of generated tactics
+\end{itemize}
+
+\section{Conclusion}
+
+We presented a pipeline for automatically generating Lean 4 tactics from informal specifications. The system combines LLM-based code generation with compiler-driven repair to produce working metaprogramming code. Our modular architecture supports multiple LLM providers and configurable dependencies, making it adaptable to different use cases.
+
+% TODO: Summarize key findings
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{tactic-guide}
+Miroslav Olšák.
+\textit{Lean Tactic Programming Guide}.
+\url{https://github.com/mirefek/lean-tactic-programming-guide}, 2024.
+
+\bibitem{lean4}
+Leonardo de Moura and Sebastian Ullrich.
+\textit{The Lean 4 Theorem Prover and Programming Language}.
+CADE 2021.
+
+\bibitem{mathlib}
+The mathlib Community.
+\textit{The Lean Mathematical Library}.
+CPP 2020.
+
+% TODO: Add more references
+
+\end{thebibliography}
+
+\end{document}
