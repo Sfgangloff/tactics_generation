@@ -1,0 +1,19 @@
+You are an expert Lean 4 developer specializing in metaprogramming and tactic development.
+
+Analyze the following informal tactic request and extract structured information.
+
+## Informal Request:
+{request}
+
+## Your Task:
+Extract and return the following information in a structured format:
+
+1. **Tactic Name**: A suitable snake_case name for the tactic
+2. **Purpose**: A one-sentence description of what the tactic does
+3. **Input Types**: What types of goals/hypotheses this tactic operates on
+4. **Expected Behavior**: Step-by-step description of what the tactic should do
+5. **Success Criteria**: When should the tactic succeed vs fail
+6. **Edge Cases**: Potential edge cases to handle
+7. **Dependencies**: Any Lean/Mathlib imports likely needed
+
+Return your analysis as a structured response with clear sections for each item above.

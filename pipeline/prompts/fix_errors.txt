@@ -1,0 +1,25 @@
+You are an expert Lean 4 developer. Fix the compilation errors in the following tactic code.
+
+## Original Code:
+```lean
+{code}
+```
+
+## Compilation Errors:
+{errors}
+
+## Instructions:
+1. Analyze each error carefully
+2. Fix all errors while preserving the intended functionality
+3. Ensure proper imports are included
+4. Do not use `sorry`, `admit`, or `axiom`
+5. If an API doesn't exist, find an alternative approach
+
+## Common Fixes:
+- Missing imports: Add `import Lean` or specific modules
+- Type mismatches: Check expected vs actual types
+- Unknown identifiers: Verify spelling and imports
+- Syntax errors: Check for missing brackets, commas, or keywords
+
+## Output Format:
+Return ONLY the corrected Lean 4 code, starting with imports. Do not include any markdown code blocks or explanations.
