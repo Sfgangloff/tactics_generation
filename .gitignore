@@ -4,6 +4,10 @@ __pycache__/
 *.pyc
 output/
 
+# API keys
+anthropic_key.txt
+openai_key.txt
+
 # LaTeX build artifacts
 *.aux
 *.log

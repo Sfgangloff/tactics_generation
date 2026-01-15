@@ -49,7 +49,7 @@ def runTrivial : TacticM Unit := do
     goal.assignIfDefEq q(True.intro)
   catch _ =>
     let goalType ← goal.getType
-    throwError "tactic runTrivial failed, goal has type `{goalType}` not `True`"
+    throwError "tactic runTrivial failed, goal has type `{{goalType}}` not `True`"
 
 -- Search local context for matching assumption
 def runAssumption : TacticM Unit :=
@@ -125,7 +125,7 @@ elab "my_check" e:term : tactic => do
   withMainContext do
     let e : Expr ← elabTerm e none
     let t ← inferType e
-    Lean.logInfo m!"{e} : {t}"
+    Lean.logInfo m!"{{e}} : {{t}}"
 
 -- Run another tactic
 elab "my_wrapper" : tactic => do
