@@ -160,9 +160,35 @@ goal.assign proofExpr
 ## Requirements
 1. The tactic must compile without errors
 2. Include proper imports: `import Lean` and optionally `import Qq`
-3. Use `open Lean Elab Tactic Meta` for convenience
-4. Add a brief doc comment explaining the tactic
-5. Include at least one example usage demonstrating the tactic
+3. Use `open Lean Meta Elab.Tactic` for convenience
+4. Add a doc comment explaining what the tactic does
+5. Include test theorems that verify the tactic works for the intended cases
 
 ## Output Format
+
+The file MUST follow this exact structure:
+
+```lean
+import Lean
+open Lean Meta Elab.Tactic
+
+/-- Brief description of what the tactic does. -/
+def tactic_name : TacticM Unit := do
+  -- Implementation here
+  ...
+
+-- Test theorems using run_tac
+theorem test_1 (A B : Prop) : ... := by
+  run_tac tactic_name
+
+theorem test_2 (A B C : Prop) : ... := by
+  run_tac tactic_name
+```
+
+**Important:**
+- Define the tactic as a `TacticM Unit` function
+- Use `run_tac tactic_name` to invoke the tactic in proofs (do NOT redefine run_tac)
+- Include multiple test theorems that verify the tactic handles all cases from the specification
+- The tests should demonstrate that the tactic generalizes correctly
+
 Return ONLY the Lean 4 code, starting with imports. Do not include any markdown code blocks or explanations outside the code.
