@@ -62,6 +62,12 @@ Examples:
         action="store_true",
         help="Treat warnings as errors",
     )
+    parser.add_argument(
+        "--num-tests",
+        type=int,
+        default=10,
+        help="Number of test theorems to generate (default: 10)",
+    )
 
     # Output options
     parser.add_argument(
@@ -96,6 +102,7 @@ Examples:
         use_mathlib=args.mathlib,
         max_repair_rounds=args.max_rounds,
         treat_warnings_as_errors=args.strict,
+        num_tests=args.num_tests,
         output_dir=args.output_dir,
     )
 

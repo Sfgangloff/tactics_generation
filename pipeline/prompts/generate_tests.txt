@@ -1,0 +1,61 @@
+You are an expert in automated theorem proving and test generation.
+
+## Task
+Generate {num_tests} test theorems for the following tactic, using the test generation algorithm provided.
+
+## Tactic Name:
+{tactic_name}
+
+## Tactic Specification:
+{specification}
+
+## Test Generation Algorithm:
+{test_algorithm}
+
+## Requirements
+
+1. Generate exactly {num_tests} DISTINCT test theorems - no duplicates allowed
+2. Each test must be a theorem that the tactic SHOULD be able to prove
+3. Order tests by difficulty: start with the simplest cases, end with the trickiest
+4. Use different variable names across tests (A, B, C, P, Q, R, X, Y, Z, etc.)
+5. Each theorem MUST use `run_tac {tactic_name}` as the proof
+
+## Difficulty Progression
+
+Structure your {num_tests} tests as follows:
+- **First third**: Simplest cases (minimal variables, straightforward structure)
+- **Middle third**: Medium complexity (more variables, deeper nesting)
+- **Final third**: Tricky edge cases (maximum complexity the tactic should handle)
+
+**IMPORTANT CONSTRAINTS:**
+- ALL variables must be of type `Prop` (e.g., `A B C : Prop`) - do NOT use `Type`, `α`, `β`, etc.
+- Do NOT use any Mathlib types (like `Set`, `Finset`, etc.)
+- Stick to propositional logic formulas using the variables
+
+## Output Format
+
+Return ONLY Lean 4 code containing the test theorems. Format:
+
+```lean
+-- Test theorems for {tactic_name}
+
+theorem test_1 (A B : Prop) : <simplest_formula> := by
+  run_tac {tactic_name}
+
+theorem test_2 (A B C : Prop) : <simple_formula> := by
+  run_tac {tactic_name}
+
+-- ... progressively harder ...
+
+theorem test_{num_tests} (...) : <trickiest_formula> := by
+  run_tac {tactic_name}
+```
+
+**CRITICAL:**
+- ALL {num_tests} theorems must be UNIQUE - no two theorems should have the same formula
+- You MUST use exactly `run_tac {tactic_name}` as the proof - this is the ONLY way to invoke the tactic
+- Do NOT use any custom tactic syntax - the tactic is a TacticM function, not a registered tactic
+- Do NOT define any syntax, elab, or macro - just write theorem statements
+- Do NOT include any markdown code blocks or explanations
+
+Return ONLY the Lean 4 theorem statements.

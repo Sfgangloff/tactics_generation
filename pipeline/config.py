@@ -20,6 +20,9 @@ class Config:
     max_repair_rounds: int = 4  # Maximum attempts to fix compilation errors
     treat_warnings_as_errors: bool = False  # Whether to fix warnings too
 
+    # Test generation settings
+    num_tests: int = 10  # Number of test theorems to generate
+
     # Output settings
     output_dir: str = "output"  # Directory for generated tactics
 

@@ -20,7 +20,8 @@ class GenerationResult:
     output_path: Optional[Path]
     repair_rounds: int
     final_validation: ValidationResult
-    analysis: str  # The structured analysis of the request
+    analysis: str
+    test_algorithm: str  # The test generation algorithm
 
 
 class TacticGenerator:
@@ -43,6 +44,8 @@ class TacticGenerator:
 
         self.analyze_prompt = (prompts_dir / "analyze_request.txt").read_text()
         self.generate_prompt = (prompts_dir / "generate_tactic.txt").read_text()
+        self.test_algorithm_prompt = (prompts_dir / "generate_test_algorithm.txt").read_text()
+        self.generate_tests_prompt = (prompts_dir / "generate_tests.txt").read_text()
         self.fix_prompt = (prompts_dir / "fix_errors.txt").read_text()
 
     def generate(self, informal_request: str) -> GenerationResult:
@@ -56,6 +59,7 @@ class TacticGenerator:
         """
         print(f"Using model: {self.model.name}")
         print(f"Mathlib enabled: {self.config.use_mathlib}")
+        print(f"Number of tests: {self.config.num_tests}")
         print()
 
         # Step 1: Analyze the informal request
@@ -64,25 +68,44 @@ class TacticGenerator:
         print("Analysis complete.")
         print()
 
-        # Step 2: Generate initial tactic code
-        print("Step 2: Generating tactic code...")
-        code = self._generate_tactic(analysis)
-        print("Initial code generated.")
+        # Step 2: Generate test algorithm
+        print("Step 2: Generating test algorithm...")
+        test_algorithm = self._generate_test_algorithm(analysis)
+        print("Test algorithm generated.")
+        print()
+
+        # Step 3: Generate tactic code (without tests)
+        print("Step 3: Generating tactic code...")
+        tactic_code = self._generate_tactic(analysis)
+        print("Tactic code generated.")
         print()
 
         # Extract tactic name from analysis or code
-        tactic_name = self._extract_tactic_name(analysis, code)
+        tactic_name = self._extract_tactic_name(analysis, tactic_code)
         filename = f"{tactic_name}.lean"
 
-        # Step 3: Validate and repair
-        print("Step 3: Validating code...")
-        code, validation, repair_rounds = self._validate_and_repair(code, filename)
+        # Step 4: Generate tests using the algorithm
+        print(f"Step 4: Generating {self.config.num_tests} tests...")
+        tests_code = self._generate_tests(tactic_name, analysis, test_algorithm)
+        print("Tests generated.")
+        print()
+
+        # Step 5: Combine tactic and tests
+        full_code = self._combine_tactic_and_tests(tactic_code, tests_code)
+
+        # Step 6: Validate and repair
+        print("Step 5: Validating code...")
+        full_code, validation, repair_rounds = self._validate_and_repair(full_code, filename)
 
         # Determine output path
         output_path = None
         if validation.success:
             output_path = self.validator.project_root / self.config.output_dir / filename
+            # Also save the specification to a separate file
+            spec_path = output_path.with_suffix(".spec.md")
+            self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
             print(f"Success! Tactic saved to: {output_path}")
+            print(f"Specification saved to: {spec_path}")
         else:
             print(f"Failed after {repair_rounds} repair rounds.")
             print(validation.format_diagnostics())
@@ -90,16 +113,23 @@ class TacticGenerator:
         return GenerationResult(
             success=validation.success,
             tactic_name=tactic_name,
-            code=code,
+            code=full_code,
             output_path=output_path,
             repair_rounds=repair_rounds,
             final_validation=validation,
             analysis=analysis,
+            test_algorithm=test_algorithm,
         )
 
     def _analyze_request(self, request: str) -> str:
         """Analyze the informal request to extract structured information."""
-        prompt = self.analyze_prompt.format(request=request)
+        prompt = self.analyze_prompt.replace("{request}", request)
+        return self.model.generate(prompt)
+
+    def _generate_test_algorithm(self, analysis: str) -> str:
+        """Generate a test algorithm based on the specification."""
+        # Use replace instead of format to handle curly braces in analysis
+        prompt = self.test_algorithm_prompt.replace("{specification}", analysis)
         return self.model.generate(prompt)
 
     def _generate_tactic(self, analysis: str) -> str:
@@ -132,15 +162,28 @@ This tactic should only use:
 Do not import Mathlib modules.
 """
 
-        prompt = self.generate_prompt.format(
-            specification=analysis,
-            use_mathlib="Yes" if self.config.use_mathlib else "No",
-            mathlib_section=mathlib_section,
-        )
+        # Use replace instead of format to handle curly braces in analysis
+        prompt = self.generate_prompt.replace("{specification}", analysis)
+        prompt = prompt.replace("{use_mathlib}", "Yes" if self.config.use_mathlib else "No")
+        prompt = prompt.replace("{mathlib_section}", mathlib_section)
         response = self.model.generate(prompt)
 
         # Clean up response (remove markdown code blocks if present)
         return self._clean_code(response)
+
+    def _generate_tests(self, tactic_name: str, analysis: str, test_algorithm: str) -> str:
+        """Generate test theorems using the test algorithm."""
+        # Use replace instead of format to handle curly braces in analysis/algorithm
+        prompt = self.generate_tests_prompt.replace("{num_tests}", str(self.config.num_tests))
+        prompt = prompt.replace("{tactic_name}", tactic_name)
+        prompt = prompt.replace("{specification}", analysis)
+        prompt = prompt.replace("{test_algorithm}", test_algorithm)
+        response = self.model.generate(prompt)
+        return self._clean_code(response)
+
+    def _combine_tactic_and_tests(self, tactic_code: str, tests_code: str) -> str:
+        """Combine the tactic code with generated tests."""
+        return f"{tactic_code}\n\n-- Generated tests\n{tests_code}"
 
     def _validate_and_repair(
         self, code: str, filename: str
@@ -171,10 +214,9 @@ Do not import Mathlib modules.
 
     def _repair_code(self, code: str, validation: ValidationResult) -> str:
         """Attempt to repair code based on compilation errors."""
-        prompt = self.fix_prompt.format(
-            code=code,
-            errors=validation.format_diagnostics(),
-        )
+        # Use replace instead of format to handle curly braces in code
+        prompt = self.fix_prompt.replace("{code}", code)
+        prompt = prompt.replace("{errors}", validation.format_diagnostics())
         response = self.model.generate(prompt)
         return self._clean_code(response)
 
@@ -187,6 +229,11 @@ Do not import Mathlib modules.
 
     def _extract_tactic_name(self, analysis: str, code: str) -> str:
         """Extract the tactic name from analysis or code."""
+        # Try to find 'def xxx : TacticM' pattern in code
+        match = re.search(r'def\s+(\w+)\s*:\s*TacticM', code)
+        if match:
+            return match.group(1)
+
         # Try to find 'elab "tactic_name"' pattern in code
         match = re.search(r'elab\s+"(\w+)"', code)
         if match:
@@ -199,3 +246,28 @@ Do not import Mathlib modules.
 
         # Default name
         return "generated_tactic"
+
+    def _save_specification(
+        self,
+        spec_path: Path,
+        tactic_name: str,
+        informal_request: str,
+        analysis: str,
+        test_algorithm: str,
+    ) -> None:
+        """Save the tactic specification to a markdown file."""
+        content = f"""# Tactic Specification: {tactic_name}
+
+## Original Request
+
+{informal_request}
+
+## Analysis
+
+{analysis}
+
+## Test Generation Algorithm
+
+{test_algorithm}
+"""
+        spec_path.write_text(content)

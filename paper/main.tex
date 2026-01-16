@@ -51,7 +51,7 @@
 \maketitle
 
 \begin{abstract}
-We present a pipeline for automatically generating Lean 4 tactics from informal natural language specifications. Our system leverages large language models (LLMs) to translate high-level descriptions of desired proof automation into working metaprogramming code. The pipeline includes an iterative repair mechanism that uses compiler feedback to fix errors in generated code. We describe the architecture, design choices, and evaluate the system on propositional logic tactics.
+We present a pipeline for automatically generating Lean 4 tactics from informal natural language specifications. Our system leverages large language models (LLMs) to translate high-level descriptions of desired proof automation into working metaprogramming code. A key innovation is our specification-first approach: before implementation, the LLM must produce a formal mathematical characterization of the tactic's semantics, which is then embedded in the generated code and used to guide test generation. We employ a two-phase test generation approach---first generating a systematic algorithm for test case enumeration, then instantiating specific tests ordered by difficulty. The pipeline includes an iterative repair mechanism that uses compiler feedback to fix errors while preserving the specification. We describe the architecture, design choices, and evaluate the system on propositional logic tactics.
 \end{abstract}
 
 \section{Introduction}
@@ -64,8 +64,10 @@ This paper presents a system that bridges this gap by automatically generating L
 
 \begin{itemize}
   \item A modular pipeline architecture for LLM-based tactic generation
+  \item Mathematical specification extraction: forcing the LLM to formalize the tactic's semantics before implementation
+  \item A two-phase test generation approach: algorithm design followed by test instantiation
+  \item Specification embedding in generated code for traceability and documentation
   \item An iterative repair mechanism using Lean compiler feedback
-  \item Integration with the Lean 4 metaprogramming framework
   \item Evaluation on propositional logic tactic generation
 \end{itemize}
 
@@ -109,7 +111,7 @@ However, generating \emph{correct} code for specialized domains like theorem pro
 
 \section{System Architecture}
 
-Our pipeline consists of four main stages: analysis, generation, validation, and repair.
+Our pipeline consists of six main stages: analysis, test algorithm generation, tactic generation, test generation, validation, and repair.
 
 \subsection{Overview}
 
@@ -127,12 +129,22 @@ Our pipeline consists of four main stages: analysis, generation, validation, and
          |
          v
 +-------------------+
-| 2. Generate       | --> Lean 4 metaprogramming code
+| 2. Test Algorithm | --> Test generation strategy
 +--------+----------+
          |
          v
 +-------------------+
-| 3. Validate       | --> Compile with Lake
+| 3. Generate Tactic| --> Lean 4 metaprogramming code
++--------+----------+
+         |
+         v
++-------------------+
+| 4. Generate Tests | --> N test theorems (configurable)
++--------+----------+
+         |
+         v
++-------------------+
+| 5. Validate       | --> Compile with Lake
 +--------+----------+
          |
     +----+----+
@@ -141,7 +153,7 @@ Our pipeline consists of four main stages: analysis, generation, validation, and
     Yes  |  No
     v    |
 +-------+|
-| Repair||---> Output validated tactic
+| Repair||---> Output validated tactic + tests
 +---+---+|
     |    |
     +----+ (retry up to N rounds)
@@ -151,21 +163,57 @@ Our pipeline consists of four main stages: analysis, generation, validation, and
 
 \subsection{Analysis Stage}
 
-The analysis stage extracts structured information from the informal request:
+The analysis stage extracts structured information from the informal request, beginning with a \emph{scope analysis} before producing a \emph{mathematical specification}:
 
 \begin{itemize}
   \item \textbf{Tactic name}: A suitable identifier for the tactic
-  \item \textbf{Purpose}: What the tactic should accomplish
-  \item \textbf{Input types}: What kinds of goals the tactic operates on
-  \item \textbf{Expected behavior}: Step-by-step description of the algorithm
+  \item \textbf{Scope Analysis}: Before committing to a specification, the LLM reasons about:
+    \begin{itemize}
+      \item The most general interpretation of the user's request
+      \item Constraints imposed by Lean 4 metaprogramming (decidability, available APIs)
+      \item Implementation complexity trade-offs
+      \item The chosen scope, with justification
+    \end{itemize}
+  \item \textbf{Mathematical Specification}: A rigorous characterization including:
+    \begin{itemize}
+      \item The class of formulas/goals handled (using set-builder notation)
+      \item The logical fragment (propositional, first-order, etc.)
+      \item Precise provability conditions
+    \end{itemize}
+  \item \textbf{Algorithm}: Step-by-step description of the proof search procedure
+  \item \textbf{Success criteria}: When the tactic succeeds vs.\ fails
   \item \textbf{Edge cases}: Potential failure modes to handle
 \end{itemize}
 
-This structured representation guides the generation stage and helps produce more focused code.
+The scope analysis is crucial: it forces the LLM to find the right balance between generality (handling a broad class of formulas) and feasibility (what can actually be implemented in Lean). For example, for an implication-selecting tactic:
 
-\subsection{Generation Stage}
+\begin{quote}
+\textbf{Scope Analysis}: The most general interpretation would handle arbitrary intuitionistic proofs, but this requires full proof search. A feasible scope is right-associative implication chains where the conclusion matches a premise---this is decidable and directly implementable using \texttt{intro} and hypothesis matching.
 
-The generation stage produces Lean 4 code based on the structured specification. We provide the LLM with:
+\textbf{Formula Class}: $\mathcal{F} = \{\varphi \mid \varphi \equiv P_1 \to P_2 \to \cdots \to P_n \to Q \text{ where } Q \in \{P_1, \ldots, P_n\}\}$
+
+\textbf{Provability}: $\forall \varphi \in \mathcal{F}.\; \vdash \varphi \iff \exists i.\; P_i \equiv Q$
+\end{quote}
+
+This specification serves as the formal contract for the tactic and is preserved throughout the pipeline.
+
+\subsection{Test Algorithm Generation Stage}
+
+Before generating the tactic implementation, we first generate a \emph{test generation algorithm}. This is a key innovation of our approach: rather than generating test cases directly, we ask the LLM to design a systematic method for generating tests based on its understanding of the tactic's specification.
+
+The test algorithm typically includes:
+\begin{itemize}
+  \item \textbf{Formula structure}: What shapes of formulas the tactic handles (e.g., implication chains, conjunctions)
+  \item \textbf{Parameters}: Variables that can be adjusted (number of propositions, nesting depth)
+  \item \textbf{Provability criteria}: Conditions that ensure generated theorems are actually provable by the tactic
+  \item \textbf{Difficulty progression}: How to order tests from simple to complex
+\end{itemize}
+
+For example, for implicational tactics, the algorithm might specify enumerating formulas like $A \to B \to A$ where the conclusion matches one of the premises.
+
+\subsection{Tactic Generation Stage}
+
+The tactic generation stage produces Lean 4 code based on the structured specification. We provide the LLM with:
 
 \begin{enumerate}
   \item The structured specification from the analysis stage
@@ -182,16 +230,53 @@ Generated tactics follow a standardized format:
 import Lean
 open Lean Meta Elab.Tactic
 
+/-- Helper to run a TacticM function in a proof. -/
+elab "run_tac" tac:ident : tactic => do
+  let name := tac.getId
+  let some (.defnInfo _) := (<- getEnv).find? name
+    | throwError s!"unknown tactic function: {name}"
+  let tacticFn <- unsafe evalConst (TacticM Unit) name
+  tacticFn
+
 /-- Documentation for the tactic. -/
 def tactic_name : TacticM Unit := do
   -- Implementation
-
--- Test theorems
-theorem test_1 (A B : Prop) : ... := by
-  run_tac tactic_name
 \end{lstlisting}
 
-The \texttt{run\_tac} command allows invoking \texttt{TacticM} functions directly in proofs, enabling immediate testing of generated tactics.
+The \texttt{run\_tac} elaborator allows invoking \texttt{TacticM} functions directly in proofs, enabling immediate testing of generated tactics without requiring custom syntax declarations.
+
+\subsubsection{Specification Embedding}
+
+The mathematical specification from the analysis stage is embedded directly in the generated file as a module-level documentation comment:
+
+\begin{lstlisting}[caption={Specification embedded in generated code}]
+/-!
+# Tactic: select_hypothesis
+
+## Mathematical Specification
+F = {phi | phi = P1 -> P2 -> ... -> Pn -> Q
+     where Q in {P1, ..., Pn}}
+
+## Algorithm
+1. Parse goal as nested implications
+2. Introduce all hypotheses
+3. Find and apply matching hypothesis
+-/
+\end{lstlisting}
+
+Additionally, a separate \texttt{.spec.md} file is saved alongside the \texttt{.lean} file, containing the original request, full analysis, and test generation algorithm. This serves as a permanent record and enables traceability from informal specification to implementation.
+
+\subsection{Test Generation Stage}
+
+Using the test algorithm from Stage 2, we generate a configurable number of test theorems. The tests are structured to provide comprehensive coverage:
+
+\begin{itemize}
+  \item \textbf{First third}: Simplest cases with minimal variables
+  \item \textbf{Middle third}: Medium complexity with more variables and deeper nesting
+  \item \textbf{Final third}: Edge cases and maximum complexity the tactic should handle
+\end{itemize}
+
+All tests use \texttt{run\_tac tactic\_name} as the proof, ensuring they compile if and only if the tactic succeeds. The number of tests is user-configurable (default: 10).
 
 \subsection{Validation Stage}
 
@@ -255,14 +340,32 @@ We integrate content from the Lean Tactic Programming Guide \cite{tactic-guide} 
   \item Idiomatic Lean 4 style
 \end{itemize}
 
-\subsection{Test-Driven Output}
+\subsection{Specification-First Design}
 
-Generated files include test theorems that verify the tactic works correctly. This serves multiple purposes:
+A crucial design choice is requiring a formal mathematical specification \emph{before} implementation. This serves multiple purposes:
+
 \begin{itemize}
-  \item Validates that the tactic handles intended cases
-  \item Demonstrates generalization beyond specific examples
-  \item Provides documentation through examples
+  \item \textbf{Semantic clarity}: Forces the LLM to precisely characterize what the tactic proves, using set-builder notation and provability conditions
+  \item \textbf{Implementation guidance}: The specification constrains the implementation, reducing the space of possible (incorrect) solutions
+  \item \textbf{Test generation}: The specification directly informs what test cases should be generated
+  \item \textbf{Repair consistency}: During repair, the specification ensures fixes maintain semantic correctness
+  \item \textbf{Documentation}: The embedded specification serves as authoritative documentation
 \end{itemize}
+
+This approach mirrors formal methods practice, where specifications precede implementations. The specification is passed to all subsequent stages (test algorithm, tactic generation, test generation, repair), ensuring consistency throughout the pipeline.
+
+\subsection{Two-Phase Test Generation}
+
+A key design choice is separating test generation into two phases: algorithm design and test instantiation. This approach has several advantages:
+
+\begin{itemize}
+  \item \textbf{Systematic coverage}: The algorithm ensures tests cover the space of valid inputs methodically
+  \item \textbf{Provability guarantee}: The algorithm explicitly encodes what makes a formula provable by the tactic
+  \item \textbf{Difficulty ordering}: Tests progress from trivial to challenging, aiding debugging
+  \item \textbf{Configurability}: Users can request any number of tests without changing the generation logic
+\end{itemize}
+
+This is more robust than generating tests directly, which often produces duplicates or invalid cases.
 
 \section{Evaluation}
 
@@ -282,32 +385,41 @@ We evaluated the system on generating tactics for intuitionistic propositional l
 ``Create a tactic that proves implications of the form $A \to B \to A$ or $A \to B \to B$ by introducing hypotheses and selecting the appropriate one.''
 \end{quote}
 
-The system generated:
+The system first generated a test algorithm specifying:
+\begin{itemize}
+  \item Formulas of the form $P_1 \to P_2 \to \cdots \to P_n \to P_i$ where $P_i$ is one of the premises
+  \item Variable count ranging from 1 to 6 propositions
+  \item Ordering by number of premises (simple to complex)
+\end{itemize}
 
-\begin{lstlisting}[caption={Generated propositional logic tactic}]
-def proj_or_swap : TacticM Unit := do
-  let g0 <- getMainGoal
-  let (_, g1) <- g0.intro `a
-  let (_, g2) <- g1.intro `b
-  replaceMainGoal [g2]
+The generated tactic uses recursive helper functions to collect all premises and find a matching hypothesis:
 
+\begin{lstlisting}[caption={Generated propositional logic tactic (excerpt)}]
+/-- Recursively collect all premise types -/
+partial def collectPremises (type : Expr)
+    : MetaM (Array Expr * Expr) := do
+  let type <- whnf type
+  match type with
+  | .forallE _ domain body _ =>
+    let (rest, conclusion) <- collectPremises body
+    return (#[domain] ++ rest, conclusion)
+  | _ => return (#[], type)
+
+/-- Main tactic: select matching hypothesis -/
+def select_hyp : TacticM Unit := do
   withMainContext do
     let goal <- getMainGoal
-    let ctx <- getLCtx
-    let some da := ctx.findFromUserName? `a
-      | throwError "could not find `a`"
-    let some db := ctx.findFromUserName? `b
-      | throwError "could not find `b`"
-
-    let tgt <- goal.getType
-    let ta <- inferType (.fvar da.fvarId)
-    if (<- isDefEq ta tgt) then
-      goal.assign (.fvar da.fvarId)
-    else
-      goal.assign (.fvar db.fvarId)
-
-  replaceMainGoal []
+    let (premises, conclusion) <- collectPremises
+                                    (<- goal.getType)
+    -- Find which premise matches conclusion
+    for i in [:premises.size] do
+      if <- isDefEq conclusion premises[i]! then
+        introAndSelect premises.size i
+        return
+    throwError "No matching hypothesis"
 \end{lstlisting}
+
+The system generated 15 test theorems covering cases from $A \to A$ (simplest) to $P \to Q \to R \to S \to T \to U \to U$ (most complex), all compiling successfully after 2 repair rounds.
 
 \section{Related Work}
 

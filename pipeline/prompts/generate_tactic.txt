@@ -153,6 +153,10 @@ replaceMainGoal [newGoal.mvarId!]
 
 -- Assign proof term to goal
 goal.assign proofExpr
+
+-- IMPORTANT: For recursive helper functions in tactics, use `partial` to avoid termination issues:
+partial def helper (args : ...) : TacticM ... := do
+  -- recursive implementation
 ```
 
 {mathlib_section}
@@ -162,7 +166,7 @@ goal.assign proofExpr
 2. Include proper imports: `import Lean` and optionally `import Qq`
 3. Use `open Lean Meta Elab.Tactic` for convenience
 4. Add a doc comment explaining what the tactic does
-5. Include test theorems that verify the tactic works for the intended cases
+5. Do NOT include test theorems - tests will be generated separately
 
 ## Output Format
 
@@ -172,23 +176,41 @@ The file MUST follow this exact structure:
 import Lean
 open Lean Meta Elab.Tactic
 
+/-!
+# Tactic: tactic_name
+
+## Mathematical Specification
+[Copy the Mathematical Specification from the analysis here verbatim]
+
+## Algorithm
+[Copy the Algorithm description from the analysis here]
+-/
+
+/-- Helper to run a TacticM function in a proof. -/
+elab "run_tac" tac:ident : tactic => do
+  let name := tac.getId
+  let some (.defnInfo _) := (← getEnv).find? name
+    | throwError s!"unknown tactic function: {{name}}"
+  let tacticFn ← unsafe evalConst (TacticM Unit) name
+  tacticFn
+
 /-- Brief description of what the tactic does. -/
 def tactic_name : TacticM Unit := do
   -- Implementation here
   ...
-
--- Test theorems using run_tac
-theorem test_1 (A B : Prop) : ... := by
-  run_tac tactic_name
-
-theorem test_2 (A B C : Prop) : ... := by
-  run_tac tactic_name
 ```
 
-**Important:**
-- Define the tactic as a `TacticM Unit` function
-- Use `run_tac tactic_name` to invoke the tactic in proofs (do NOT redefine run_tac)
-- Include multiple test theorems that verify the tactic handles all cases from the specification
-- The tests should demonstrate that the tactic generalizes correctly
+**IMPORTANT:**
+- Always include the module doc comment (`/-! ... -/`) with the Mathematical Specification and Algorithm from the analysis
+- Always include the `run_tac` elab definition exactly as shown above (copy it verbatim)
+- This specification serves as the formal contract for what the tactic should prove
+
+**CRITICAL RESTRICTIONS - MUST FOLLOW:**
+- Include the `run_tac` elab EXACTLY as shown above (this is the ONLY syntax definition allowed)
+- Define the tactic as a `def tactic_name : TacticM Unit` function
+- Do NOT define any OTHER custom tactic syntax (no additional `syntax`, `elab`, `macro` for your tactic)
+- Do NOT include any test theorems or examples
+- The file should end after the tactic definition - nothing else
+- For recursive helper functions, use `partial def` to avoid termination issues
 
 Return ONLY the Lean 4 code, starting with imports. Do not include any markdown code blocks or explanations outside the code.

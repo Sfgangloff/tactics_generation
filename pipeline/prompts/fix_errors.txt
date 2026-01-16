@@ -15,11 +15,24 @@ You are an expert Lean 4 developer. Fix the compilation errors in the following 
 4. Do not use `sorry`, `admit`, or `axiom`
 5. If an API doesn't exist, find an alternative approach
 
+## CRITICAL RULES:
+- PRESERVE the module doc comment (`/-! ... -/`) containing the Mathematical Specification
+- PRESERVE the `run_tac` elab definition - this is required for tests to work
+- The main tactic MUST be defined as `def tactic_name : TacticM Unit`
+- Do NOT add any OTHER `elab`, `syntax`, `macro` definitions for the main tactic
+- Tests MUST use `run_tac tactic_name` - do NOT change how tests invoke the tactic
+- For termination issues with recursive functions, use `partial def` instead of `def`
+- DO NOT use `sorry` anywhere in the code - find a real solution
+- DO NOT modify the test theorems (lines starting with `theorem test_`) - only fix the tactic implementation
+- Ensure the implementation matches the Mathematical Specification in the doc comment
+
 ## Common Fixes:
 - Missing imports: Add `import Lean` or specific modules
 - Type mismatches: Check expected vs actual types
 - Unknown identifiers: Verify spelling and imports
 - Syntax errors: Check for missing brackets, commas, or keywords
+- Termination errors: Use `partial def` for recursive functions
+- Mutation errors: Use `let mut` for mutable variables
 
 ## Output Format:
 Return ONLY the corrected Lean 4 code, starting with imports. Do not include any markdown code blocks or explanations.

@@ -1,6 +1,6 @@
-You are an expert Lean 4 developer specializing in metaprogramming and tactic development.
+You are an expert Lean 4 developer specializing in metaprogramming, tactic development, and mathematical logic.
 
-Analyze the following informal tactic request and extract structured information.
+Analyze the following informal tactic request and extract structured information, including a formal mathematical specification.
 
 ## Informal Request:
 {request}
@@ -9,11 +9,32 @@ Analyze the following informal tactic request and extract structured information
 Extract and return the following information in a structured format:
 
 1. **Tactic Name**: A suitable snake_case name for the tactic
-2. **Purpose**: A one-sentence description of what the tactic does
-3. **Input Types**: What types of goals/hypotheses this tactic operates on
-4. **Expected Behavior**: Step-by-step description of what the tactic should do
-5. **Success Criteria**: When should the tactic succeed vs fail
-6. **Edge Cases**: Potential edge cases to handle
-7. **Dependencies**: Any Lean/Mathlib imports likely needed
 
-Return your analysis as a structured response with clear sections for each item above.
+2. **Scope Analysis**: Before writing the specification, reason about the trade-off between generality and feasibility:
+   - **Most general interpretation**: What is the broadest class of formulas/goals that could satisfy the user's intent?
+   - **Lean constraints**: What limitations does Lean 4 metaprogramming impose? (e.g., decidability, available APIs, expression matching capabilities)
+   - **Implementation complexity**: What scope is realistically implementable without excessive complexity?
+   - **Chosen scope**: State the scope you will target, explaining why it balances generality with feasibility while respecting the user's constraints.
+
+3. **Mathematical Specification**: Based on your scope analysis, provide a rigorous mathematical characterization of:
+   - The class of formulas/goals this tactic handles (use set-builder notation if helpful)
+   - The logical fragment (propositional, first-order, etc.)
+   - Precise provability conditions: under what conditions does a formula in this class have a proof?
+   - Example: "Formulas of the form P1 -> P2 -> ... -> Pn -> Q where Q is in the set P1, P2, ..., Pn"
+
+4. **Purpose**: A one-sentence description of what the tactic does
+
+5. **Input Types**: What types of goals/hypotheses this tactic operates on (in Lean terms)
+
+6. **Algorithm**: Step-by-step description of the proof search algorithm:
+   - What structure does the tactic look for in the goal?
+   - How does it decompose the goal?
+   - How does it construct the proof term?
+
+7. **Success Criteria**: Precise conditions for success vs failure
+
+8. **Edge Cases**: Potential edge cases and how to handle them
+
+9. **Dependencies**: Any Lean/Mathlib imports likely needed
+
+Return your analysis as a structured response with clear sections for each item above. The Scope Analysis and Mathematical Specification sections are particularly important - they ensure the tactic is both well-defined and implementable.

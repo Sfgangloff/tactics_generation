@@ -1,0 +1,42 @@
+You are an expert in automated theorem proving and test generation.
+
+## Task
+Design an algorithm that generates test cases (theorem statements) for the following tactic specification.
+
+## Tactic Specification:
+{specification}
+
+## Your Goal
+Create a systematic method to generate theorem statements that the tactic should be able to prove. The algorithm should:
+
+1. **Identify the structure** of theorems the tactic handles (e.g., implication chains, conjunctions, etc.)
+2. **Define parameters** that can vary (number of variables, nesting depth, etc.)
+3. **Enumerate or randomly sample** valid theorem structures
+4. **Ensure provability** - only generate theorems that SHOULD be provable by the tactic
+
+## Example: Implicational Fragment Test Generator
+
+For a tactic proving implications like `A → B → A`, a good test generator would:
+
+1. **Formula Shape**: Use Catalan number enumeration for implication tree structures
+   - n=2: `(A → B) → C` and `A → (B → C)`
+
+2. **Variable Assignment**: Use equivalence relations to assign proposition variables
+   - For `A → B → C`: try A=B=C, A=B≠C, A≠B=C, A=C≠B, A≠B≠C
+
+3. **Provability Check**: Only keep assignments where the formula is provable
+   - `A → B → A` is provable (return first hypothesis)
+   - `A → B → C` with A≠B≠C is NOT provable
+
+4. **Generation**: Combine shapes with provable variable assignments
+
+## Output Format
+
+Provide a detailed algorithm description including:
+
+1. **Input parameters**: What controls the generation (e.g., max_depth, num_variables)
+2. **Core algorithm**: Step-by-step procedure to generate test cases
+3. **Provability criteria**: How to ensure generated theorems are provable
+4. **Example outputs**: 5-10 example theorem statements the algorithm would generate
+
+Be specific and detailed so the algorithm can be used to generate varied test cases.
