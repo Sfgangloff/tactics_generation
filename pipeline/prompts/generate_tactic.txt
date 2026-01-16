@@ -186,14 +186,6 @@ open Lean Meta Elab.Tactic
 [Copy the Algorithm description from the analysis here]
 -/
 
-/-- Helper to run a TacticM function in a proof. -/
-elab "run_tac" tac:ident : tactic => do
-  let name := tac.getId
-  let some (.defnInfo _) := (← getEnv).find? name
-    | throwError s!"unknown tactic function: {{name}}"
-  let tacticFn ← unsafe evalConst (TacticM Unit) name
-  tacticFn
-
 /-- Brief description of what the tactic does. -/
 def tactic_name : TacticM Unit := do
   -- Implementation here
@@ -202,13 +194,11 @@ def tactic_name : TacticM Unit := do
 
 **IMPORTANT:**
 - Always include the module doc comment (`/-! ... -/`) with the Mathematical Specification and Algorithm from the analysis
-- Always include the `run_tac` elab definition exactly as shown above (copy it verbatim)
 - This specification serves as the formal contract for what the tactic should prove
 
 **CRITICAL RESTRICTIONS - MUST FOLLOW:**
-- Include the `run_tac` elab EXACTLY as shown above (this is the ONLY syntax definition allowed)
 - Define the tactic as a `def tactic_name : TacticM Unit` function
-- Do NOT define any OTHER custom tactic syntax (no additional `syntax`, `elab`, `macro` for your tactic)
+- Do NOT define `run_tac` or any other custom tactic syntax (no `syntax`, `elab`, `macro`)
 - Do NOT include any test theorems or examples
 - The file should end after the tactic definition - nothing else
 - For recursive helper functions, use `partial def` to avoid termination issues

@@ -17,10 +17,9 @@ You are an expert Lean 4 developer. Fix the compilation errors in the following 
 
 ## CRITICAL RULES:
 - PRESERVE the module doc comment (`/-! ... -/`) containing the Mathematical Specification
-- PRESERVE the `run_tac` elab definition - this is required for tests to work
 - The main tactic MUST be defined as `def tactic_name : TacticM Unit`
-- Do NOT add any OTHER `elab`, `syntax`, `macro` definitions for the main tactic
-- Tests MUST use `run_tac tactic_name` - do NOT change how tests invoke the tactic
+- Do NOT add any `elab`, `syntax`, `macro` definitions - `run_tac` is already defined externally
+- Tests use `run_tac tactic_name` - do NOT change how tests invoke the tactic
 - For termination issues with recursive functions, use `partial def` instead of `def`
 - DO NOT use `sorry` anywhere in the code - find a real solution
 - DO NOT modify the test theorems (lines starting with `theorem test_`) - only fix the tactic implementation
