@@ -257,11 +257,11 @@ Do not import Mathlib modules.
         test_algorithm: str,
     ) -> None:
         """Save the tactic specification to a markdown file."""
-        content = f"""# Tactic Specification: {tactic_name}
+        content = f"""> **User Request:** {informal_request}
 
-## Original Request
+---
 
-{informal_request}
+# Tactic Specification: {tactic_name}
 
 ## Analysis
 
