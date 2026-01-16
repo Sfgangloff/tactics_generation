@@ -97,18 +97,19 @@ class TacticGenerator:
         print("Step 5: Validating code...")
         full_code, validation, repair_rounds = self._validate_and_repair(full_code, filename)
 
-        # Determine output path
-        output_path = None
+        # Determine output path and always save spec (useful for debugging failed attempts)
+        output_path = self.validator.project_root / self.config.output_dir / filename
+        spec_path = output_path.with_suffix(".spec.md")
+        self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
+
         if validation.success:
-            output_path = self.validator.project_root / self.config.output_dir / filename
-            # Also save the specification to a separate file
-            spec_path = output_path.with_suffix(".spec.md")
-            self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
             print(f"Success! Tactic saved to: {output_path}")
             print(f"Specification saved to: {spec_path}")
         else:
             print(f"Failed after {repair_rounds} repair rounds.")
             print(validation.format_diagnostics())
+            print(f"Specification saved to: {spec_path}")
+            output_path = None  # Mark as failed
 
         return GenerationResult(
             success=validation.success,
