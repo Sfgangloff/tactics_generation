@@ -1,0 +1,4 @@
+1. Check if run_tac needs elab or not
+2. In the paper, it says we evaluate on implications but we should instead provide a list of informal specifications as 
+they are on mathlib github. 
+3. Write meta-paper about how using claude code to write a paper along with building and experimenting.

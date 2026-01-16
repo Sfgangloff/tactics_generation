@@ -14,7 +14,8 @@
 
 % Lean code styling
 \lstdefinelanguage{Lean}{
-  keywords={def, theorem, lemma, example, import, open, do, let, if, then, else, for, in, return, by, run_tac, TacticM, Unit, Prop, Type},
+  keywords={def, theorem, lemma, example, import, open, do, let, if, then, else, for, in, return, 
+  by, run_tac, TacticM, Unit, Prop, Type},
   keywordstyle=\color{blue}\bfseries,
   ndkeywords={getMainGoal, withMainContext, getLCtx, inferType, isDefEq, assign, throwError},
   ndkeywordstyle=\color{purple},
@@ -51,20 +52,42 @@
 \maketitle
 
 \begin{abstract}
-We present a pipeline for automatically generating Lean 4 tactics from informal natural language specifications. Our system leverages large language models (LLMs) to translate high-level descriptions of desired proof automation into working metaprogramming code. A key innovation is our specification-first approach: before implementation, the LLM must produce a formal mathematical characterization of the tactic's semantics, which is then embedded in the generated code and used to guide test generation. We employ a two-phase test generation approach---first generating a systematic algorithm for test case enumeration, then instantiating specific tests ordered by difficulty. The pipeline includes an iterative repair mechanism that uses compiler feedback to fix errors while preserving the specification. We describe the architecture, design choices, and evaluate the system on propositional logic tactics.
+We present a pipeline for automatically generating Lean 4 tactics 
+from informal natural language specifications. Our system leverages large 
+language models (LLMs) to translate high-level descriptions of desired proof automation 
+into working metaprogramming code. A key innovation is our specification-first 
+approach: before implementation, the LLM must produce a formal mathematical characterization of 
+the tactic's semantics, which is then embedded in the generated code and used 
+to guide test generation. We employ a two-phase test generation approach 
+- first generating a systematic algorithm for test case enumeration, 
+then instantiating specific tests ordered by difficulty. 
+The pipeline includes an iterative repair mechanism that uses compiler 
+feedback to fix errors while preserving the specification. 
+We describe the architecture, design choices, and evaluate 
+the system on propositional logic tactics.
 \end{abstract}
 
 \section{Introduction}
 
-Interactive theorem provers like Lean 4 have become increasingly important tools for formalizing mathematics and verifying software. A key feature of these systems is their extensibility through \emph{tactics}---procedures that automate proof construction. However, writing tactics requires expertise in both the domain (e.g., mathematics) and metaprogramming, creating a barrier for many users.
+Interactive theorem provers like Lean 4 have become increasingly 
+important tools for formalizing mathematics and verifying software. 
+A key feature of these systems is their extensibility through \emph{tactics}
+---procedures that automate proof construction. However, 
+writing tactics requires expertise in both the domain (e.g., mathematics) and metaprogramming, 
+creating a barrier for many users.
 
-This paper presents a system that bridges this gap by automatically generating Lean 4 tactics from informal natural language descriptions. Given a specification like ``create a tactic that proves implications by introducing hypotheses and searching the context,'' our system produces working metaprogramming code that can be used in proofs.
+This paper presents a system that bridges this gap by automatically 
+generating Lean 4 tactics from informal natural language descriptions. 
+Given a specification like ``create a tactic that proves implications by introducing 
+hypotheses and searching the context,'' our system produces working metaprogramming 
+code that can be used in proofs.
 
 \subsection{Contributions}
 
 \begin{itemize}
   \item A modular pipeline architecture for LLM-based tactic generation
-  \item Mathematical specification extraction: forcing the LLM to formalize the tactic's semantics before implementation
+  \item Mathematical specification extraction: forcing the LLM to formalize 
+  the tactic's semantics before implementation
   \item A two-phase test generation approach: algorithm design followed by test instantiation
   \item Specification embedding in generated code for traceability and documentation
   \item An iterative repair mechanism using Lean compiler feedback
@@ -75,9 +98,12 @@ This paper presents a system that bridges this gap by automatically generating L
 
 \subsection{Lean 4 and Metaprogramming}
 
-Lean 4 is a functional programming language and interactive theorem prover. Unlike its predecessor Lean 3, Lean 4 provides a unified metaprogramming framework where tactics are written in Lean itself.
+Lean 4 is a functional programming language and interactive theorem prover. 
+Unlike its predecessor Lean 3, Lean 4 provides a unified metaprogramming 
+framework where tactics are written in Lean itself.
 
-A tactic in Lean 4 operates in the \texttt{TacticM} monad, which provides access to the proof state. The key components are:
+A tactic in Lean 4 operates in the \texttt{TacticM} monad, which provides 
+access to the proof state. The key components are:
 
 \begin{itemize}
   \item \textbf{Goals}: Represented as metavariables (\texttt{MVarId}) that need to be assigned proof terms
@@ -100,9 +126,14 @@ def assumption_tactic : TacticM Unit :=
 
 \subsection{Large Language Models for Code Generation}
 
-Recent advances in large language models have demonstrated remarkable capabilities in code generation. Models like GPT-4 and Claude can generate syntactically correct code in many programming languages when given natural language descriptions.
+Recent advances in large language models have demonstrated remarkable 
+capabilities in code generation. Models like GPT-4 and Claude can 
+generate syntactically correct code in many programming languages 
+when given natural language descriptions.
 
-However, generating \emph{correct} code for specialized domains like theorem prover metaprogramming remains challenging due to:
+However, generating \emph{correct} code for specialized domains 
+like theorem prover metaprogramming remains challenging due to:
+
 \begin{itemize}
   \item Limited training data for niche languages
   \item Complex type systems and semantic constraints
@@ -111,7 +142,8 @@ However, generating \emph{correct} code for specialized domains like theorem pro
 
 \section{System Architecture}
 
-Our pipeline consists of six main stages: analysis, test algorithm generation, tactic generation, test generation, validation, and repair.
+Our pipeline consists of six main stages: analysis, 
+test algorithm generation, tactic generation, test generation, validation, and repair.
 
 \subsection{Overview}
 
@@ -163,7 +195,8 @@ Our pipeline consists of six main stages: analysis, test algorithm generation, t
 
 \subsection{Analysis Stage}
 
-The analysis stage extracts structured information from the informal request, beginning with a \emph{scope analysis} before producing a \emph{mathematical specification}:
+The analysis stage extracts structured information from the informal 
+request, beginning with a \emph{scope analysis} before producing a \emph{mathematical specification}:
 
 \begin{itemize}
   \item \textbf{Tactic name}: A suitable identifier for the tactic
@@ -185,12 +218,18 @@ The analysis stage extracts structured information from the informal request, be
   \item \textbf{Edge cases}: Potential failure modes to handle
 \end{itemize}
 
-The scope analysis is crucial: it forces the LLM to find the right balance between generality (handling a broad class of formulas) and feasibility (what can actually be implemented in Lean). For example, for an implication-selecting tactic:
+The scope analysis is crucial: it forces the LLM to find the right balance 
+between generality (handling a broad class of formulas) and feasibility 
+(what can actually be implemented in Lean). For example, for an implication-selecting tactic:
 
 \begin{quote}
-\textbf{Scope Analysis}: The most general interpretation would handle arbitrary intuitionistic proofs, but this requires full proof search. A feasible scope is right-associative implication chains where the conclusion matches a premise---this is decidable and directly implementable using \texttt{intro} and hypothesis matching.
+\textbf{Scope Analysis}: The most general interpretation would handle arbitrary intuitionistic proofs, 
+but this requires full proof search. A feasible scope is right-associative implication chains 
+where the conclusion matches a premise---this is decidable and directly implementable 
+using \texttt{intro} and hypothesis matching.
 
-\textbf{Formula Class}: $\mathcal{F} = \{\varphi \mid \varphi \equiv P_1 \to P_2 \to \cdots \to P_n \to Q \text{ where } Q \in \{P_1, \ldots, P_n\}\}$
+\textbf{Formula Class}: $\mathcal{F} = \{\varphi \mid \varphi \equiv 
+P_1 \to P_2 \to \cdots \to P_n \to Q \text{ where } Q \in \{P_1, \ldots, P_n\}\}$
 
 \textbf{Provability}: $\forall \varphi \in \mathcal{F}.\; \vdash \varphi \iff \exists i.\; P_i \equiv Q$
 \end{quote}
@@ -199,7 +238,9 @@ This specification serves as the formal contract for the tactic and is preserved
 
 \subsection{Test Algorithm Generation Stage}
 
-Before generating the tactic implementation, we first generate a \emph{test generation algorithm}. This is a key innovation of our approach: rather than generating test cases directly, we ask the LLM to design a systematic method for generating tests based on its understanding of the tactic's specification.
+Before generating the tactic implementation, we first generate a \emph{test generation algorithm}. 
+This is a key innovation of our approach: rather than generating test cases directly, we ask the LLM 
+to design a systematic method for generating tests based on its understanding of the tactic's specification.
 
 The test algorithm typically includes:
 \begin{itemize}
@@ -209,7 +250,8 @@ The test algorithm typically includes:
   \item \textbf{Difficulty progression}: How to order tests from simple to complex
 \end{itemize}
 
-For example, for implicational tactics, the algorithm might specify enumerating formulas like $A \to B \to A$ where the conclusion matches one of the premises.
+For example, for implicational tactics, the algorithm might specify enumerating formulas 
+like $A \to B \to A$ where the conclusion matches one of the premises.
 
 \subsection{Tactic Generation Stage}
 
@@ -243,11 +285,13 @@ def tactic_name : TacticM Unit := do
   -- Implementation
 \end{lstlisting}
 
-The \texttt{run\_tac} elaborator allows invoking \texttt{TacticM} functions directly in proofs, enabling immediate testing of generated tactics without requiring custom syntax declarations.
+The \texttt{run\_tac} elaborator allows invoking \texttt{TacticM} functions directly in proofs, 
+enabling immediate testing of generated tactics without requiring custom syntax declarations.
 
 \subsubsection{Specification Embedding}
 
-The mathematical specification from the analysis stage is embedded directly in the generated file as a module-level documentation comment:
+The mathematical specification from the analysis stage is embedded directly in the generated 
+file as a module-level documentation comment:
 
 \begin{lstlisting}[caption={Specification embedded in generated code}]
 /-!
@@ -264,11 +308,14 @@ F = {phi | phi = P1 -> P2 -> ... -> Pn -> Q
 -/
 \end{lstlisting}
 
-Additionally, a separate \texttt{.spec.md} file is saved alongside the \texttt{.lean} file, containing the original request, full analysis, and test generation algorithm. This serves as a permanent record and enables traceability from informal specification to implementation.
+Additionally, a separate \texttt{.spec.md} file is saved alongside the \texttt{.lean} file, 
+containing the original request, full analysis, and test generation algorithm. This serves as 
+a permanent record and enables traceability from informal specification to implementation.
 
 \subsection{Test Generation Stage}
 
-Using the test algorithm from Stage 2, we generate a configurable number of test theorems. The tests are structured to provide comprehensive coverage:
+Using the test algorithm from Stage 2, we generate a configurable number of test theorems. 
+The tests are structured to provide comprehensive coverage:
 
 \begin{itemize}
   \item \textbf{First third}: Simplest cases with minimal variables
@@ -276,7 +323,8 @@ Using the test algorithm from Stage 2, we generate a configurable number of test
   \item \textbf{Final third}: Edge cases and maximum complexity the tactic should handle
 \end{itemize}
 
-All tests use \texttt{run\_tac tactic\_name} as the proof, ensuring they compile if and only if the tactic succeeds. The number of tests is user-configurable (default: 10).
+All tests use \texttt{run\_tac tactic\_name} as the proof, ensuring they compile if and 
+only if the tactic succeeds. The number of tests is user-configurable (default: 10).
 
 \subsection{Validation Stage}
 
@@ -318,7 +366,8 @@ class LLMModel(ABC):
         pass
 \end{lstlisting}
 
-This design allows easy switching between providers (OpenAI, Anthropic) and facilitates future extensions to local models.
+This design allows easy switching between providers (OpenAI, Anthropic) and facilitates 
+future extensions to local models.
 
 \subsection{Mathlib Configuration}
 
@@ -333,7 +382,8 @@ When disabled, tactics are restricted to core Lean and the Batteries library, en
 
 \subsection{Tutorial Integration}
 
-We integrate content from the Lean Tactic Programming Guide \cite{tactic-guide} directly into the generation prompt. This provides:
+We integrate content from the Lean Tactic Programming Guide \cite{tactic-guide} directly 
+into the generation prompt. This provides:
 \begin{itemize}
   \item Concrete examples of working tactics
   \item Common metaprogramming patterns
