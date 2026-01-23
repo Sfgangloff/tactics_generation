@@ -152,7 +152,7 @@ class TacticGenerator:
         full_code, validation, repair_rounds = self._validate_and_repair(full_code, filename)
 
         # Determine output path and always save spec (useful for debugging failed attempts)
-        output_path = self.validator.project_root / self.config.output_dir / filename
+        output_path = self._get_model_output_dir() / filename
         spec_path = output_path.with_suffix(".spec.md")
         self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
 
@@ -281,6 +281,15 @@ Do not import Mathlib modules.
         code = re.sub(r"```lean\n?", "", code)
         code = re.sub(r"```\n?", "", code)
         return code.strip()
+
+    def _get_model_output_dir(self) -> Path:
+        """Get the output directory including model-specific subfolder."""
+        # Sanitize model name for use as folder name
+        # Replace / with - (for openrouter models like "anthropic/claude-3.5-sonnet")
+        model_folder = self.model.name.replace("/", "-").replace(":", "-")
+        output_dir = self.validator.project_root / self.config.output_dir / model_folder
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
 
     def _extract_tactic_name(self, analysis: str, code: str) -> str:
         """Extract the tactic name from analysis or code."""

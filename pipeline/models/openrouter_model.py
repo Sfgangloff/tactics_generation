@@ -1,4 +1,4 @@
-"""OpenAI model implementation."""
+"""OpenRouter model implementation."""
 
 import os
 from pathlib import Path
@@ -19,33 +19,42 @@ def _find_project_root() -> Path:
     return Path.cwd()
 
 
-class OpenAIModel(LLMModel):
-    """OpenAI API implementation."""
+class OpenRouterModel(LLMModel):
+    """OpenRouter API implementation.
+
+    OpenRouter provides access to many models through a unified API.
+    Uses the OpenAI SDK with a custom base URL.
+    """
+
+    BASE_URL = "https://openrouter.ai/api/v1"
 
     def __init__(
         self,
-        model_name: str = "gpt-4o",
+        model_name: str = "anthropic/claude-3.5-sonnet",
         api_key: Optional[str] = None,
     ):
         self._model_name = model_name
         self._api_key = api_key or self._load_api_key()
         if not self._api_key:
             raise ValueError(
-                "OpenAI API key not found. Either:\n"
-                "  - Set OPENAI_API_KEY environment variable, or\n"
-                "  - Put your key in openai_key.txt"
+                "OpenRouter API key not found. Either:\n"
+                "  - Set OPENROUTER_API_KEY environment variable, or\n"
+                "  - Put your key in openrouter_key.txt"
             )
-        self._client = OpenAI(api_key=self._api_key)
+        self._client = OpenAI(
+            api_key=self._api_key,
+            base_url=self.BASE_URL,
+        )
 
     def _load_api_key(self) -> Optional[str]:
         """Load API key from environment or file."""
         # Try environment variable first
-        key = os.environ.get("OPENAI_API_KEY")
+        key = os.environ.get("OPENROUTER_API_KEY")
         if key:
             return key
 
         # Try key file
-        key_file = _find_project_root() / "openai_key.txt"
+        key_file = _find_project_root() / "openrouter_key.txt"
         if key_file.exists():
             return key_file.read_text().strip()
 

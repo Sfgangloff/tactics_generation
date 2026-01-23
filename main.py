@@ -16,6 +16,7 @@ def main():
 Examples:
   python main.py "Create a tactic that simplifies boolean expressions"
   python main.py --provider openai --mathlib "Create a tactic for finding limits"
+  python main.py --provider openrouter --model google/gemini-pro "Create a tactic"
   python main.py -f request.txt --output my_tactic.lean
   python main.py --batch specifications.json
   python main.py --batch specifications.json --only Tendsto Nonzero
@@ -49,7 +50,7 @@ Examples:
     # Model options
     parser.add_argument(
         "--provider",
-        choices=["anthropic", "openai"],
+        choices=["anthropic", "openai", "openrouter"],
         default="anthropic",
         help="LLM provider to use (default: anthropic)",
     )

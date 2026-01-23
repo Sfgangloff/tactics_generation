@@ -15,6 +15,7 @@ pip install -r requirements.txt
 
 # Single tactic
 python main.py "tactic description"
+python main.py --provider openrouter --model google/gemini-pro "tactic description"
 
 # Batch mode (from specifications.json)
 python main.py --batch specifications.json
@@ -44,8 +45,8 @@ output/            # Generated tactics
 
 ## Configuration
 
-- `--provider anthropic|openai` - LLM provider
-- `--model NAME` - Specific model
+- `--provider anthropic|openai|openrouter` - LLM provider
+- `--model NAME` - Specific model (for OpenRouter: e.g., `google/gemini-pro`, `meta-llama/llama-3-70b-instruct`)
 - `--mathlib` - Enable Mathlib imports
 - `--max-rounds N` - Repair attempts
 

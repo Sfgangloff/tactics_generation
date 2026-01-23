@@ -6,7 +6,7 @@ A pipeline for generating Lean 4 tactics from informal natural language descript
 
 - Lean 4 with Lake ([installation guide](https://leanprover.github.io/lean4/doc/setup.html))
 - Python 3.10+
-- API key for Anthropic or OpenAI
+- API key for Anthropic, OpenAI, or OpenRouter
 
 ## Setup
 
@@ -20,10 +20,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Set API key
+# Set API key via environment variable (choose one)
 export ANTHROPIC_API_KEY="your-key-here"
-# or
 export OPENAI_API_KEY="your-key-here"
+export OPENROUTER_API_KEY="your-key-here"
+
+# Or put your key in a file (auto-ignored by git)
+echo "your-key-here" > anthropic_key.txt
+echo "your-key-here" > openai_key.txt
+echo "your-key-here" > openrouter_key.txt
 ```
 
 ## Usage
@@ -36,6 +41,10 @@ python main.py "Create a tactic that simplifies boolean expressions"
 
 # Use OpenAI
 python main.py --provider openai "Create a tactic that applies symmetry"
+
+# Use OpenRouter (access to many models)
+python main.py --provider openrouter --model google/gemini-pro "Create a tactic"
+python main.py --provider openrouter --model meta-llama/llama-3-70b-instruct "Create a tactic"
 
 # Enable Mathlib imports
 python main.py --mathlib "Create a tactic for finding limits"

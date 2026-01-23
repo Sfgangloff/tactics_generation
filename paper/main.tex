@@ -435,8 +435,9 @@ class LLMModel(ABC):
         pass
 \end{lstlisting}
 
-This design allows easy switching between providers (OpenAI, Anthropic) and facilitates 
-future extensions to local models.
+This design allows easy switching between providers (OpenAI, Anthropic, OpenRouter) and facilitates
+future extensions to local models. OpenRouter support enables access to a wide variety of models
+(including Google Gemini, Meta LLaMA, Mistral, and others) through a unified API.
 
 \subsection{Batch Processing and Multi-Tactic Specifications}
 

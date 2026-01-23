@@ -10,7 +10,7 @@ class Config:
     """Pipeline configuration."""
 
     # Model settings
-    model_provider: str = "anthropic"  # "anthropic" or "openai"
+    model_provider: str = "anthropic"  # "anthropic", "openai", or "openrouter"
     model_name: Optional[str] = None  # If None, uses provider default
 
     # Mathlib configuration
@@ -36,6 +36,8 @@ class Config:
                 self.model_name = "claude-sonnet-4-20250514"
             elif self.model_provider == "openai":
                 self.model_name = "gpt-4o"
+            elif self.model_provider == "openrouter":
+                self.model_name = "anthropic/claude-3.5-sonnet"
             else:
                 raise ValueError(f"Unknown model provider: {self.model_provider}")
 
@@ -47,6 +49,9 @@ class Config:
         elif self.model_provider == "openai":
             from .models import OpenAIModel
             return OpenAIModel(model_name=self.model_name)
+        elif self.model_provider == "openrouter":
+            from .models import OpenRouterModel
+            return OpenRouterModel(model_name=self.model_name)
         else:
             raise ValueError(f"Unknown model provider: {self.model_provider}")
 
