@@ -1,0 +1,28 @@
+{
+  "Tendsto": {
+    "description": "Should find limits in simple cases (e.g., no 0/0 etc). Simplest version is Continuous.tendsto' (by continuity) _ _ (by simp). More advanced version should know that exp(-1/x) tends to 𝓝[>] 0 as x tends to atTop. *Should know that 1/x tends to cobounded as x tends to 𝓝[≠] 0 and vice versa (for any normed field, not only reals)"
+  },
+  "ExistsPositiveFromLimit": {
+    "description": "Prove statements like (δ : Real) (h : 0 < δ) ⊢ ∃ ε > 0, ε ^ 2 + 5 * ε + sin ε < δ ∧ 3 * ε < δ by proving Tendsto (fun ε ↦ ε ^ 2 + 5 * ε + sin ε) (nhds 0) (nhds 0), similarly for 3 * ε, then using this fact to get a witness"
+  },
+  "Nonzero": {
+    "description": " A tactic that proves expr ≠ 0. at least as powerful as whatever field_simp currently uses (it tries several tactics); knows lemmas like a ≠ 0 → -a ≠ 0, a ≠ 0 → b ≠ 0 → a * b ≠ 0 and a ≠ 0 → a ^ n ≠ 0; fallbacks to positivity if it can't deal with the head symbol (e.g., +) and there is a PartialOrder instance"
+  },
+  "PolynomialComputation": {
+    "description": "Tactic that can compute things about polynomials: Polynomial equality, Polynomial disequality, n-th coefficient, leading coefficient, monicity (is that the word for the property of being monic?)"
+  },
+  "RingCharacteristicN": {"description": "A tactic (perhaps ring itself) that is able to able to deal with the CharP predicate. Desired examples: import Mathlib.Tactic example {R} [CommRing R] [CharP R 3] (x : R) : x + x + x + x = x := by ring example {R} [CommRing R] [CharP R 2] (x y : R) : (x + y) ^ 2 = x ^ 2 + y ^ 2 := by ring Ideally same for noncomm_ring"
+},
+  "DecidableFirstOrder": {
+    "description": "More tactics resolving statements in decidable first-order theories. Such as: Presburger arithmetic. (Is this just omega?) Reals. Lists. Often these are hard to write fast tactics for. Nevertheless, I think they could often be helpful. Maybe the best version of these tactics is to use a look-up table for common instances."
+  },
+  "LogExpOrder": {
+    "description": "Tactic to decide the order on logarithmico-exponential functions."
+  },
+  "RealApproximation": {
+    "description": "Tactic to provide approximations of real-valued expressions (i.e prove 3.83 < ln(2) + pi < 3.84). See (https://github.com/Timeroot/ComputableReal/tree/main) which does this, albeit with some feature yet-to-be-added: pi, exp, log ... see the link for more"
+  },
+  "RewriteAC": {
+    "description": "Here's an idea: a tactic that rewrites modulo associativity and commutativity. I want something like this:\n import Mathlib.Data.Real.Basic\n example {x y z a : ℝ} (h : x + y + z = 0) : z + (a + x) + y = a := by\n  ac_rw [h, zero_add] -- `add_zero` will also work\n Here is a potential implementation strategy:\n The tactic keeps track of a database of ac-constants, i.e.\n constants that have associated associativity and commutativity lemmas (ac-lemmas)\n (potentially depending on type-class assumptions)\nWhen rewriting with a term, first fully apply it to metavariables until the type t is an\n= or ↔. Let T be the lhs (or rhs) of that equality/iff.\nLook through the location (hypothesis or goal) and find all subexpressions with the same head as\nT, excluding all occurrences that are direct arguments of operations with the same head (so in\nx + (y + z) the subexpression y + z is not considered separately).\nNow for each found subexpression e, we have to check whether it ac-unifies with T (i.e. unifies with T up to commutativity and associativity).\nThis means that we have to write our own unification method, which is a bit scary. Plan:\nLet H be the head of T\nif H is not an ac-constant, replace all ac-arguments of T (all arguments containing a ac-constant somewhere) by a metavariable and unify (regularly) the result with e. Then, for each ac-argument, recursively ac-unify the result with the corresponding (now instantiated) metavariable.\nif H is an ac-constant:\nreplace the last 2 arguments of T by fresh metavariables and unify (regularly) the result\nwith e.\nsynthesize any needed type-class arguments for the ac-lemmas for H.\n(Potentially: if this fails, try again but now treating H as not being an ac-constant)\nthen collect an array A of arguments of H in T and an array B of arguments of e\n(both including nested arguments)\nNow for each element of A test whether it ac-unifies with at least one element of B\nProbably useful for performance: compute the head of each element of A,\nand only ac-unify against the elements of B with the same head.\nFind an injective map M from (positions in) A to matching (positions in) B,\nstored as an array.\n(Whenever I say regular unification I mean unification up to reducible-and-instances,\nincluding typeclass synthesis.)\nIf e ac-unifies with T, use the ac-lemmas to rewrite e in the same shape as T,\nusing the mapping M to put the arguments in the correct position\n(first fully left-associate both e and t, and then use LeftCommutative.left_comm\nto permute the arguments). All unused arguments in B will move to the right of all used\narguments, without reordering the unused arguments.\nNow rewrite with t."
+  }
+}
