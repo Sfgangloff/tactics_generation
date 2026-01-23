@@ -190,7 +190,76 @@ test algorithm generation, tactic generation, test generation, validation, and r
     |    |
     +----+ (retry up to N rounds)
 \end{verbatim}
-\caption{Pipeline architecture}
+\caption{Single-tactic pipeline architecture}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\begin{verbatim}
++----------------------+
+| specifications.json  |  (multiple user specifications)
++----------+-----------+
+           |
+           v
++----------------------+
+| 0. Split Spec        | --> Identify multiple tactics
++----------+-----------+
+           |
+    +------+------+
+    |             |
+    v             v
++--------+   +--------+
+| Spec 1 |   | Spec N |  ... (one or more tactics)
++---+----+   +---+----+
+    |             |
+    v             v
++--------+   +--------+
+|Pipeline|   |Pipeline|  (full single-tactic pipeline)
++---+----+   +---+----+
+    |             |
+    v             v
++----------------------+
+| Aggregate Results    | --> JSON report
++----------------------+
+\end{verbatim}
+\caption{Batch processing architecture}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\begin{verbatim}
++------------------+     +------------------+
+| existing.lean    |     | existing.spec.md |
++--------+---------+     +--------+---------+
+         |                        |
+         v                        v
++----------------------------------------+
+| 1. Parse existing tests & specification |
++-------------------+--------------------+
+                    |
+                    v
++----------------------------------------+
+| 2. Generate N additional tests          |
+|    (non-duplicates, following algorithm)|
++-------------------+--------------------+
+                    |
+                    v
++----------------------------------------+
+| 3. Append tests to file                 |
++-------------------+--------------------+
+                    |
+                    v
++----------------------------------------+
+| 4. Validate & Repair                    |
+|    (update tactic if tests fail)        |
++-------------------+--------------------+
+                    |
+                    v
++----------------------------------------+
+| 5. Save updated file                    |
++----------------------------------------+
+\end{verbatim}
+\caption{Update pipeline architecture}
 \end{figure}
 
 \subsection{Analysis Stage}
@@ -368,6 +437,54 @@ class LLMModel(ABC):
 
 This design allows easy switching between providers (OpenAI, Anthropic) and facilitates 
 future extensions to local models.
+
+\subsection{Batch Processing and Multi-Tactic Specifications}
+
+Real-world tactic requests often describe multiple related but distinct tactics in a single specification.
+For example, a user might request ``a tactic that can compute polynomial equality, coefficient extraction,
+and leading term.'' Rather than generating a monolithic tactic, our system:
+
+\begin{enumerate}
+  \item \textbf{Specification Splitting}: An LLM analyzes the user specification to identify distinct tactics.
+  Each is extracted as a self-contained specification with its own name and description.
+  \item \textbf{Independent Generation}: Each split specification goes through the full pipeline independently,
+  producing separate tactic files.
+  \item \textbf{Aggregated Reporting}: Results are collected and reported together, showing success/failure
+  per tactic and per original specification.
+\end{enumerate}
+
+This approach has several advantages:
+\begin{itemize}
+  \item \textbf{Modularity}: Each tactic is self-contained and can be used independently
+  \item \textbf{Targeted repair}: If one tactic fails, others are unaffected
+  \item \textbf{Clearer specifications}: Smaller, focused specifications lead to better-defined tactics
+\end{itemize}
+
+The batch mode also supports processing multiple specifications from a JSON configuration file,
+enabling systematic generation of tactic suites from curated specification collections.
+
+\subsection{Incremental Update Pipeline}
+
+Once a tactic is generated, it may need to be improved to handle additional cases. Our \emph{update pipeline}
+enables incremental enhancement without regenerating from scratch:
+
+\begin{enumerate}
+  \item \textbf{Specification Reuse}: The original specification and test generation algorithm
+  (stored in the \texttt{.spec.md} file) guide the generation of new tests
+  \item \textbf{Non-duplicate Tests}: The LLM is shown existing tests and instructed to generate
+  novel cases covering different parameters, edge cases, or complexity levels
+  \item \textbf{Targeted Repair}: When new tests fail, the repair prompt focuses on extending
+  the tactic's capabilities rather than rewriting it entirely
+\end{enumerate}
+
+This incremental approach has several benefits:
+\begin{itemize}
+  \item \textbf{Preserves working functionality}: Existing tests continue to pass
+  \item \textbf{Gradual capability expansion}: The tactic grows to handle more cases over iterations
+  \item \textbf{Efficient use of LLM calls}: Only new tests and targeted repairs are generated
+  \item \textbf{Convergence toward specification}: Repeated updates can help the tactic
+  asymptotically cover its full specification
+\end{itemize}
 
 \subsection{Mathlib Configuration}
 

@@ -1,0 +1,47 @@
+You are an expert Lean 4 developer analyzing tactic specifications.
+
+## User Specification:
+Name: {spec_name}
+Description: {description}
+
+## Your Task:
+
+Analyze whether this specification describes **one tactic** or **multiple distinct tactics**.
+
+A specification describes multiple tactics if it:
+- Lists multiple separate functionalities (e.g., "compute equality, coefficient, leading term")
+- Uses phrases like "and", "also", "as well as" to describe different capabilities
+- Describes different versions/variants that should be separate tactics
+
+A specification describes ONE tactic if:
+- All described functionality serves a single cohesive purpose
+- Variations are just different input cases for the same algorithm
+- It's describing multiple steps of one algorithm
+
+## Output Format:
+
+Return a JSON object with this structure:
+
+```json
+{
+  "is_multi_tactic": true/false,
+  "tactics": [
+    {
+      "name": "suggested_tactic_name",
+      "description": "Complete description for this specific tactic, self-contained and detailed enough to implement independently"
+    }
+  ],
+  "reasoning": "Brief explanation of why you split or didn't split"
+}
+```
+
+If `is_multi_tactic` is false, the `tactics` array should have exactly one element containing the original (possibly refined) specification.
+
+If `is_multi_tactic` is true, each tactic in the array should be a complete, self-contained specification that can be implemented independently.
+
+## Important:
+
+- Each split tactic description should be detailed enough to implement on its own
+- Include relevant context from the original in each split description
+- Use appropriate naming conventions (snake_case for Lean)
+- Don't split too finely - only split when there are genuinely distinct tactics

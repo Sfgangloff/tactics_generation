@@ -1,0 +1,45 @@
+You are an expert Lean 4 developer updating an existing tactic to handle new test cases.
+
+## Tactic Specification
+
+{specification}
+
+## Current Complete File
+
+The file currently contains the tactic implementation and tests. Some tests may be failing with the new additions:
+
+```lean
+{current_code}
+```
+
+## Compilation Errors
+
+The following errors occurred when compiling:
+
+{errors}
+
+## Your Task
+
+Update the tactic implementation to fix the errors while:
+1. Maintaining the same file structure and format
+2. Keeping all existing functionality working
+3. Extending the tactic to handle the new test cases
+4. NOT removing any tests - all tests must pass
+5. NOT changing the `run_tac` mechanism or how tests invoke the tactic
+6. Preserving any helper functions that are still needed
+
+Focus on understanding WHY the new tests fail and what capability the tactic is missing.
+Common reasons for failure:
+- The tactic doesn't handle a particular formula structure
+- Edge cases not covered
+- Missing pattern matching cases
+- Insufficient recursion depth
+
+## Output Format
+
+Output the COMPLETE updated Lean 4 file, including:
+- All imports
+- The tactic definition (updated as needed)
+- ALL tests (both old and new)
+
+Do not omit any part of the file. The output should be a complete, compilable Lean file.

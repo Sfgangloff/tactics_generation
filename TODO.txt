@@ -1,7 +1,0 @@
-1. In the paper, it says we evaluate on implications but we should instead provide a list of informal specifications as 
-they are on mathlib github. 
-2. Write meta-paper about how using claude code to write a paper along with building and experimenting.
-3. Scrap tactic specifications directly from the webpage.
-4. Make the tactic work for the implication fragment of intuitionistic logic. 
-5. Test using directly Claude code itself to replicate evolutionary test time compute methods; in particular 
-sudoku.

@@ -1,0 +1,39 @@
+You are an expert Lean 4 developer generating additional test cases for an existing tactic.
+
+## Tactic Specification
+
+{specification}
+
+## Test Generation Algorithm
+
+{test_algorithm}
+
+## Existing Tests
+
+The following tests already exist in the file. DO NOT generate duplicates or equivalent tests:
+
+```lean
+{existing_tests}
+```
+
+## Your Task
+
+Generate exactly {num_tests} NEW test theorems that:
+1. Follow the test generation algorithm above
+2. Are NOT duplicates or trivially equivalent to existing tests
+3. Cover different cases than the existing tests (vary parameters, complexity, edge cases)
+4. Use the tactic via `by run_tac {tactic_name}`
+5. Are ordered by increasing difficulty/complexity
+
+Each test should be a theorem that the tactic should be able to prove. Use descriptive names that indicate what case is being tested.
+
+## Output Format
+
+Output ONLY the Lean 4 code for the new test theorems, nothing else. Do not include imports or the tactic definition - just the new theorem statements.
+
+Example format:
+```lean
+theorem test_new_case_1 : <type> := by run_tac {tactic_name}
+
+theorem test_new_case_2 : <type> := by run_tac {tactic_name}
+```
