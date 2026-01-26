@@ -128,15 +128,38 @@ class TacticGenerator:
         print("Test algorithm generated.")
         print()
 
+        # Extract tactic name early from analysis
+        tactic_name = self._extract_tactic_name_from_analysis(analysis)
+        filename = f"{tactic_name}.lean"
+
+        # Determine output paths and save spec FIRST
+        output_path = self._get_model_output_dir() / filename
+        spec_path = output_path.with_suffix(".spec.md")
+        self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
+        print(f"Specification saved to: {spec_path}")
+        print()
+
         # Step 3: Generate tactic code (without tests)
         print("Step 3: Generating tactic code...")
         tactic_code = self._generate_tactic(analysis)
         print("Tactic code generated.")
         print()
 
-        # Extract tactic name from analysis or code
+        # Update tactic name if we can extract a better one from code
+        old_tactic_name = tactic_name
         tactic_name = self._extract_tactic_name(analysis, tactic_code)
         filename = f"{tactic_name}.lean"
+        output_path = self._get_model_output_dir() / filename
+
+        # Rename spec file if tactic name changed
+        if tactic_name != old_tactic_name:
+            new_spec_path = output_path.with_suffix(".spec.md")
+            if spec_path.exists() and spec_path != new_spec_path:
+                spec_path.rename(new_spec_path)
+                spec_path = new_spec_path
+                # Update spec content with correct tactic name
+                self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
+                print(f"Specification renamed to: {spec_path}")
 
         # Step 4: Generate tests using the algorithm
         print(f"Step 4: Generating {self.config.num_tests} tests...")
@@ -147,22 +170,15 @@ class TacticGenerator:
         # Step 5: Combine tactic and tests
         full_code = self._combine_tactic_and_tests(tactic_code, tests_code)
 
-        # Step 6: Validate and repair
+        # Step 6: Validate and repair (uses temp file, only writes to output_path on success)
         print("Step 5: Validating code...")
-        full_code, validation, repair_rounds = self._validate_and_repair(full_code, filename)
-
-        # Determine output path and always save spec (useful for debugging failed attempts)
-        output_path = self._get_model_output_dir() / filename
-        spec_path = output_path.with_suffix(".spec.md")
-        self._save_specification(spec_path, tactic_name, informal_request, analysis, test_algorithm)
+        full_code, validation, repair_rounds = self._validate_and_repair_temp(full_code, output_path)
 
         if validation.success:
             print(f"Success! Tactic saved to: {output_path}")
-            print(f"Specification saved to: {spec_path}")
         else:
             print(f"Failed after {repair_rounds} repair rounds.")
             print(validation.format_diagnostics())
-            print(f"Specification saved to: {spec_path}")
             output_path = None  # Mark as failed
 
         return GenerationResult(
@@ -241,13 +257,13 @@ Do not import Mathlib modules.
         return f"{tactic_code}\n\n-- Generated tests\n{tests_code}"
 
     def _validate_and_repair(
-        self, code: str, filename: str
+        self, code: str, file_path: Path
     ) -> tuple[str, ValidationResult, int]:
         """Validate code and attempt repairs if needed."""
         repair_round = 0
 
         while repair_round <= self.config.max_repair_rounds:
-            validation = self.validator.validate(code, filename)
+            validation = self.validator.validate(code, file_path)
 
             # Check if we need to repair
             needs_repair = validation.has_errors
@@ -266,6 +282,46 @@ Do not import Mathlib modules.
             code = self._repair_code(code, validation)
 
         return code, validation, repair_round
+
+    def _validate_and_repair_temp(
+        self, code: str, final_path: Path
+    ) -> tuple[str, ValidationResult, int]:
+        """Validate code using temp file, only write to final_path on success."""
+        import tempfile
+
+        repair_round = 0
+        temp_dir = self.validator.project_root / ".temp_validation"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = temp_dir / final_path.name
+
+        try:
+            while repair_round <= self.config.max_repair_rounds:
+                validation = self.validator.validate(code, temp_path)
+
+                # Check if we need to repair
+                needs_repair = validation.has_errors
+                if self.config.treat_warnings_as_errors:
+                    needs_repair = needs_repair or validation.has_warnings
+
+                if not needs_repair:
+                    # Success! Write to final path
+                    final_path.parent.mkdir(parents=True, exist_ok=True)
+                    final_path.write_text(code)
+                    return code, validation, repair_round
+
+                if repair_round == self.config.max_repair_rounds:
+                    break
+
+                # Attempt repair
+                repair_round += 1
+                print(f"  Repair round {repair_round}/{self.config.max_repair_rounds}...")
+                code = self._repair_code(code, validation)
+
+            return code, validation, repair_round
+        finally:
+            # Clean up temp file
+            if temp_path.exists():
+                temp_path.unlink()
 
     def _repair_code(self, code: str, validation: ValidationResult) -> str:
         """Attempt to repair code based on compilation errors."""
@@ -291,6 +347,15 @@ Do not import Mathlib modules.
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 
+    def _extract_tactic_name_from_analysis(self, analysis: str) -> str:
+        """Extract the tactic name from analysis only."""
+        # Try to find 'Tactic Name:' in analysis
+        match = re.search(r"Tactic Name[:\s]+(\w+)", analysis, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        # Default name
+        return "generated_tactic"
+
     def _extract_tactic_name(self, analysis: str, code: str) -> str:
         """Extract the tactic name from analysis or code."""
         # Try to find 'def xxx : TacticM' pattern in code
@@ -303,13 +368,8 @@ Do not import Mathlib modules.
         if match:
             return match.group(1)
 
-        # Try to find 'Tactic Name:' in analysis
-        match = re.search(r"Tactic Name[:\s]+(\w+)", analysis, re.IGNORECASE)
-        if match:
-            return match.group(1)
-
-        # Default name
-        return "generated_tactic"
+        # Fallback to analysis-based extraction
+        return self._extract_tactic_name_from_analysis(analysis)
 
     def _save_specification(
         self,
@@ -525,9 +585,8 @@ Do not import Mathlib modules.
 
         # Step 3: Validate and repair
         print("Step 2: Validating updated code...")
-        filename = lean_file.name
         updated_code, validation, repair_rounds = self._validate_and_repair_update(
-            updated_code, filename, analysis
+            updated_code, lean_file, analysis
         )
 
         # Save the updated file
@@ -631,7 +690,7 @@ Do not import Mathlib modules.
         return f"{code.rstrip()}\n\n-- Additional tests\n{new_tests}"
 
     def _validate_and_repair_update(
-        self, code: str, filename: str, specification: str
+        self, code: str, file_path: Path, specification: str
     ) -> tuple[str, ValidationResult, int]:
         """Validate updated code and attempt repairs if needed.
 
@@ -640,7 +699,7 @@ Do not import Mathlib modules.
         repair_round = 0
 
         while repair_round <= self.config.max_repair_rounds:
-            validation = self.validator.validate(code, filename)
+            validation = self.validator.validate(code, file_path)
 
             # Check if we need to repair
             needs_repair = validation.has_errors

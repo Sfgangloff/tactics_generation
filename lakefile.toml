@@ -13,3 +13,8 @@ scope = "leanprover-community"
 [[require]]
 name = "Qq"
 scope = "leanprover-community"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.27.0"

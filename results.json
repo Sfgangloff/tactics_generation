@@ -1,0 +1,165 @@
+{
+  "timestamp": "2026-01-23T17:46:43.283235",
+  "config": {
+    "provider": "anthropic",
+    "model": null,
+    "mathlib": false,
+    "max_rounds": 4,
+    "num_tests": 10
+  },
+  "summary": {
+    "total_specs": 9,
+    "total_tactics": 14,
+    "successful": 0,
+    "failed": 14
+  },
+  "results": [
+    {
+      "spec_name": "Tendsto",
+      "is_multi_tactic": false,
+      "split_reasoning": "This describes a single cohesive tactic for proving limit statements. While it mentions different approaches (continuity, exponential cases, reciprocal cases), these are all variations of the same core functionality: proving tendsto goals. The different cases represent the sophistication levels the tactic should handle, not separate algorithms.",
+      "tactics": [
+        {
+          "name": "limit_auto",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "ExistsPositiveFromLimit",
+      "is_multi_tactic": false,
+      "split_reasoning": "This describes a single cohesive tactic with one clear purpose: proving existential statements about positive witnesses using limit arguments. The mention of proving multiple tendsto statements and then using them is describing the algorithmic steps of one tactic, not separate functionalities. The example with two conditions (\u03b5^2 + 5*\u03b5 + sin \u03b5 < \u03b4 and 3*\u03b5 < \u03b4) shows the tactic handling multiple constraints simultaneously, which is still one unified approach.",
+      "tactics": [
+        {
+          "name": "prove_exists_by_tendsto",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "Nonzero",
+      "is_multi_tactic": false,
+      "split_reasoning": "This describes a single cohesive tactic with one clear purpose: proving nonzero goals. The various capabilities (algebraic lemmas, positivity fallback, multiple strategies) are all different approaches/components within the same algorithm, not separate tactics. The fallback to `positivity` and knowledge of various lemmas are implementation details of how this one tactic achieves its goal.",
+      "tactics": [
+        {
+          "name": "nonzero",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "PolynomialComputation",
+      "is_multi_tactic": true,
+      "split_reasoning": "The specification lists four distinct computational tasks for polynomials that serve different purposes and would likely use different algorithms. Polynomial equality checking is fundamentally different from coefficient extraction, and each functionality would be useful independently. Splitting allows for more targeted and efficient tactics.",
+      "tactics": [
+        {
+          "name": "poly_norm",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        },
+        {
+          "name": "poly_coeff",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        },
+        {
+          "name": "simp_leading_coeff",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        },
+        {
+          "name": "decide_monic",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "RingCharacteristicN",
+      "is_multi_tactic": false,
+      "split_reasoning": "This specification describes a single cohesive functionality: enhancing ring equation solving with characteristic information. The examples all demonstrate the same core capability applied to different cases, and the mention of extending to non-commutative rings is just a variation of the same algorithm, not a separate tactic.",
+      "tactics": [
+        {
+          "name": "ring_char",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "DecidableFirstOrder",
+      "is_multi_tactic": true,
+      "split_reasoning": "The specification explicitly mentions three distinct first-order theories (Presburger arithmetic, reals, lists) which operate on completely different mathematical structures and would require entirely different decision procedures. Each would need its own implementation approach and algorithms, making them separate tactics rather than variants of a single tactic.",
+      "tactics": [
+        {
+          "name": "presburger",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        },
+        {
+          "name": "real_poly_decide",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        },
+        {
+          "name": "decide_list_theory",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "LogExpOrder",
+      "is_multi_tactic": false,
+      "split_reasoning": "This specification describes a single cohesive tactic with one purpose: deciding order relationships on logarithmico-exponential functions. While the implementation may involve multiple steps or handle various cases of logarithmic and exponential expressions, it's all serving the unified goal of order determination rather than describing separate functionalities.",
+      "tactics": [
+        {
+          "name": "log_exp_order",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "RealApproximation",
+      "is_multi_tactic": false,
+      "split_reasoning": "This specification describes a single cohesive tactic with one clear purpose: proving numerical bounds on real-valued expressions. While it mentions that some features like \u03c0, exp, log are yet to be added, these are just different cases/inputs for the same underlying approximation algorithm, not separate tactics. The core functionality is unified around computing and proving numerical approximations.",
+      "tactics": [
+        {
+          "name": "norm_num_bounds",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    },
+    {
+      "spec_name": "RewriteAC",
+      "is_multi_tactic": false,
+      "split_reasoning": "This specification describes a single cohesive tactic `ac_rw` that performs rewriting modulo associativity and commutativity. All the described functionality (ac-unification, database management, expression reshaping) serves the single purpose of enabling AC-aware rewriting. The complex implementation strategy with multiple steps is just the algorithm for one tactic, not multiple separate tactics.",
+      "tactics": [
+        {
+          "name": "generated_tactic",
+          "success": false,
+          "repair_rounds": 4,
+          "output_path": null
+        }
+      ]
+    }
+  ]
+}

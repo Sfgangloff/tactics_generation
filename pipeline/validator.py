@@ -59,21 +59,18 @@ class LeanValidator:
             current = current.parent
         raise FileNotFoundError("Could not find Lean project root (lakefile.toml)")
 
-    def validate(self, code: str, filename: str = "GeneratedTactic.lean") -> ValidationResult:
+    def validate(self, code: str, file_path: Path) -> ValidationResult:
         """Validate Lean code by writing to file and compiling.
 
         Args:
             code: The Lean code to validate.
-            filename: Name for the temporary Lean file.
+            file_path: Full path where the Lean file should be written.
 
         Returns:
             ValidationResult with success status and diagnostics.
         """
-        # Write code to output directory
-        output_dir = self.project_root / "output"
-        output_dir.mkdir(exist_ok=True)
-        file_path = output_dir / filename
-
+        # Ensure parent directory exists and write code
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(code)
 
         # Run lake env lean to compile

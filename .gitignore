@@ -8,6 +8,7 @@ output/
 anthropic_key.txt
 openai_key.txt
 openrouter_key.txt
+
 TODO.txt
 
 # LaTeX build artifacts
@@ -21,3 +22,4 @@ TODO.txt
 *.fdb_latexmk
 *.fls
 *.pdf
+.temp_validation/
