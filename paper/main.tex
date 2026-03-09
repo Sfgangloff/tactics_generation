@@ -230,37 +230,61 @@ code generation.
 
 Before the main study, we ran a pilot experiment to understand what makes
 LLM-driven metaprogramming succeed or fail.
-The target was a tactic that proves the implication fragment of
-intuitionistic propositional logic: goals of the form
-$P_1 \to P_2 \to \cdots \to P_n \to P_i$ where the conclusion
-is one of the hypotheses.
+We used a Julia program to enumerate all provable propositional theorems
+involving only implication (→) up to a given depth (using Catalan numbers
+for formula shapes and Bell numbers for variable equivalences).
+These theorems served as a concrete test suite.
+The target was a Lean 4 tactic that proves any such theorem uniformly,
+required to be written using metaprogramming and invoked via \texttt{run\_tac}.
+We explored three approaches.
 
-\paragraph{Iterative approach.}
-The first approach was purely reactive: generate a tactic, feed compiler
-errors back to the LLM, and repeat.  This converged slowly.  The LLM
-corrected local errors but introduced new ones with each round, and
-without a prior specification it was unclear when the tactic was
-semantically correct rather than merely compiling.
+\paragraph{Approach 1: Example-driven iteration.}
+We fed the generated theorems to ChatGPT (GPT-5) starting with
+2-implication examples, asked it to write a uniform tactic, then
+provided 3-implication examples, 4-implication examples, and so on.
+The model was asked to update the tactic at each step to handle the
+growing class. This produced 8 Lean files with no convergence:
+the model's tactic always matched the current batch of examples but
+did not generalise. A characteristic failure: when confronted with
+a goal like $((A \to B \to B) \to C) \to C$, the model incorrectly
+claimed such formulas are not intuitionistically valid in general and
+failed to check provability for the specific substitution at hand.
+Without a semantic anchor, there is no guarantee that fixing one
+batch of errors does not break another.
 
-\paragraph{Spec-first approach.}
-The second approach asked the LLM to first produce a mathematical
-characterisation of the goal class:
+\paragraph{Approach 2: LLM-generated characterization.}
+Instead of asking for a tactic directly, we first asked the model to
+\emph{explain} the examples — to articulate the mathematical property
+shared by all the generated theorems — and then to write the tactic
+guided by that characterization.
+This converged in 3--5 files rather than failing to converge.
+The model inferred a characterization and produced a cleaner tactic
+(intro all, then assumption or one-step modus ponens).
+However, the inferred characterization was narrower than the true class:
+it covered only the cases the model had seen.
+
+\paragraph{Approach 3: Researcher-written specification.}
+The most reliable approach was for the researchers to write the mathematical
+specification themselves — precisely characterizing the formula class and
+the proof algorithm — and then ask the model to implement the tactic from
+that spec. The target class is:
 \[
   \mathcal{F} = \{\,\varphi \mid \varphi \equiv P_1 \to \cdots \to P_n \to Q,
   \ Q \in \{P_1, \ldots, P_n\}\,\}
 \]
-and to describe the proof algorithm before writing any code.
-With this specification in hand, implementation was significantly more
-directed: the LLM had a clear target and the specification served as
-an invariant during repair rounds.
+with algorithm: introduce all implications, then close by \texttt{assumption}.
+The resulting tactic (\texttt{identity\_intro}: intros all, then assumption) is
+correct, concise, and needed no repair rounds.
 
 \paragraph{Outcome and caveats.}
-The final tactic uses gas-bounded proof search over the hypothesis context.
-It handles the target formula class correctly but is not mathematically
-complete: there exist provable formulas in the fragment that it cannot prove
-within the gas bound.  This honest limitation motivated the more rigorous
-spec-first pipeline used for the main study, and foreshadowed the key insight:
-\emph{the quality of the specification determines the quality of the implementation}.
+The progression Approach 1 $\to$ 2 $\to$ 3 shows that the model is a good
+code generator when given a precise mathematical description, and a poor
+mathematician when asked to infer the class from examples alone.
+This motivated the spec-first pipeline used for the main study:
+always generate a formal specification before asking the model to write code.
+The spec-first tactic is not mathematically complete (gas-bounded proof search
+may fail on deeply nested goals), but the incompleteness is explicit in the
+spec rather than hidden in the implementation.
 
 %%% ============================================================
 \section{The \texttt{limit\_auto} Study}
