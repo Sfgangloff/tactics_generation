@@ -1,4 +1,4 @@
-\documentclass[11pt]{article}
+\documentclass[a4paper,11pt]{article}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -7,17 +7,24 @@
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{geometry}
-\usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{microtype}
+\usepackage[colorinlistoftodos]{todonotes}
 
-\geometry{margin=1in}
+\geometry{margin=1in, marginparwidth=2.8cm}
+
+% \comment{...} renders as a colored margin note during drafting.
+% To hide all comments for submission: \renewcommand{\comment}[1]{}
+\newcommand{\comment}[1]{\todo[color=yellow!40,size=\scriptsize]{#1}}
 
 % Lean code styling
 \lstdefinelanguage{Lean}{
-  keywords={def, theorem, lemma, example, import, open, do, let, if, then, else, for, in, return, 
-  by, run_tac, TacticM, Unit, Prop, Type},
+  keywords={def, theorem, lemma, example, import, open, do, let, if, then, else, for, in, return,
+  by, TacticM, Unit, Prop, Type, where, match, with, fun, partial, namespace, end, inductive,
+  syntax, initialize, pure, true, false, none, some},
   keywordstyle=\color{blue}\bfseries,
-  ndkeywords={getMainGoal, withMainContext, getLCtx, inferType, isDefEq, assign, throwError},
+  ndkeywords={getMainGoal, getType, instantiateMVars, evalTactic, throwTacticEx,
+    isAppOfArity, getAppArgs, isBVar, isAppOf, registerTraceClass},
   ndkeywordstyle=\color{purple},
   identifierstyle=\color{black},
   sensitive=true,
@@ -30,623 +37,614 @@
 
 \lstset{
   language=Lean,
-  basicstyle=\ttfamily\small,
+  basicstyle=\ttfamily\footnotesize,
   breaklines=true,
   frame=single,
   numbers=left,
   numberstyle=\tiny\color{gray},
   tabsize=2,
+  xleftmargin=2em,
 }
 
-\title{Automated Tactic Generation for Lean 4 \\
-  \large From Informal Specifications to Metaprogramming Code}
+\title{Generating Lean~4 Tactics from User Specifications:\\
+       An Empirical Study of LLM-Assisted Metaprogramming Strategies}
 
 \author{
   % Authors here
 }
 
-\date{\today}
+\date{}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-We present a pipeline for automatically generating Lean 4 tactics 
-from informal natural language specifications. Our system leverages large 
-language models (LLMs) to translate high-level descriptions of desired proof automation 
-into working metaprogramming code. A key innovation is our specification-first 
-approach: before implementation, the LLM must produce a formal mathematical characterization of 
-the tactic's semantics, which is then embedded in the generated code and used 
-to guide test generation. We employ a two-phase test generation approach 
-- first generating a systematic algorithm for test case enumeration, 
-then instantiating specific tests ordered by difficulty. 
-The pipeline includes an iterative repair mechanism that uses compiler 
-feedback to fix errors while preserving the specification. 
-We describe the architecture, design choices, and evaluate 
-the system on propositional logic tactics.
+We present an empirical study of strategies for generating Lean~4 tactics from
+natural language specifications using large language models~(LLMs).
+Rather than measuring whether an LLM can generate a tactic from a bare prompt,
+we ask what \emph{scaffolding} makes tactic generation reliable: a formal
+specification, a milestone plan, and live compiler feedback via an LSP server.
+Our main experiment is a $2 \times 2$ study of the \texttt{limit\_auto} tactic,
+which automatically proves \texttt{Tendsto~f~F~G} goals in Lean~4 / Mathlib,
+comparing the presence or absence of a milestone plan with the presence or
+absence of live LSP tool access.  We find that raw one-shot generation without
+scaffolding produces no usable output, while the combination of milestone
+planning and LSP feedback produces a working tactic with zero compiler errors
+and a rich test suite after nine incremental milestones.  We characterise the
+concrete classes of errors that only LSP feedback can fix---incorrect Mathlib
+API names, deprecated lemma identifiers, elaboration-order pitfalls---and
+discuss the implications for LLM-based metaprogramming pipelines.
 \end{abstract}
 
+%%% ============================================================
 \section{Introduction}
+%%% ============================================================
 
-Interactive theorem provers like Lean 4 have become increasingly 
-important tools for formalizing mathematics and verifying software. 
-A key feature of these systems is their extensibility through \emph{tactics}
----procedures that automate proof construction. However, 
-writing tactics requires expertise in both the domain (e.g., mathematics) and metaprogramming, 
-creating a barrier for many users.
+Interactive theorem provers such as Lean~4 have become important tools for
+formalising mathematics and verifying software.  A key feature of these systems
+is their extensibility through \emph{tactics}---procedures that automate proof
+steps and can be reused across an entire development.  Writing a non-trivial
+tactic requires deep knowledge of the \texttt{TacticM} monad, Lean's expression
+representation, the Mathlib library API, and numerous elaboration subtleties
+that are difficult to predict without a live compiler.
 
-This paper presents a system that bridges this gap by automatically 
-generating Lean 4 tactics from informal natural language descriptions. 
-Given a specification like ``create a tactic that proves implications by introducing 
-hypotheses and searching the context,'' our system produces working metaprogramming 
-code that can be used in proofs.
+This paper investigates whether large language models can bridge this gap,
+generating working Lean~4 tactics from informal user specifications.
+Our main case study is a tactic we call \texttt{limit\_auto},
+generated from the following user request (see \texttt{experiments/limit\_auto/spec.md}):
+\begin{quote}
+\textit{``A tactic that proves limit statements (tendsto goals) by analysing
+the mathematical structure of the limit expression\ldots''}
+\end{quote}
+The resulting tactic automatically proves goals of the form \texttt{Tendsto~f~F~G}
+by syntactically classifying the function~$f$ and selecting the appropriate Mathlib
+lemma.  It requires non-trivial knowledge of filter notation, Mathlib
+lemma names, and metaprogramming patterns---making it a good test case for our study.
 
-\subsection{Contributions}
-
+Our original question was simply: \emph{can an LLM generate this tactic?}
+Once we found that the answer depended critically on how the task was presented,
+the question sharpened to \emph{which scaffolding strategies make generation successful}.
+We compare four conditions in a $2 \times 2$ design:
 \begin{itemize}
-  \item A modular pipeline architecture for LLM-based tactic generation
-  \item Mathematical specification extraction: forcing the LLM to formalize 
-  the tactic's semantics before implementation
-  \item A two-phase test generation approach: algorithm design followed by test instantiation
-  \item Specification embedding in generated code for traceability and documentation
-  \item An iterative repair mechanism using Lean compiler feedback
-  \item Evaluation on propositional logic tactic generation
+  \item the presence or absence of a formal \emph{milestone plan} generated
+        before implementation; and
+  \item the presence or absence of live \emph{LSP tool access} during
+        implementation (real-time diagnostics, goal inspection, lemma search).
+\end{itemize}
+\comment{By the way, we need to see how to evaluate the differences. Because for instance
+between tools + plan and just tools, we have two different tactics which do more or less the same thing 
+but have different qualities (at least according to chatgpt).}
+\comment{Also I think that we should not just restrict to just limit_auto, later 
+we should repeat this for all the user specifications we have. But first to have a good schema, 
+let's restrict to limit_auto.}
+
+Our findings are that (1)~a raw one-shot API call without scaffolding produces
+no usable output; (2)~a milestone plan alone helps structure the work but
+cannot prevent wrong Mathlib API names from breaking the tactic; (3)~LSP
+feedback alone (without a plan) produces a working one-shot implementation;
+and (4)~combining both yields the most complete and readable result.
+By \emph{LSP tools} we mean the Lean Language Server Protocol tools available inside
+Claude Code: real-time compiler diagnostics (\texttt{lean\_diagnostic\_messages}),
+proof-state inspection (\texttt{lean\_goal}), and natural-language Mathlib
+search (\texttt{lean\_leansearch}, \texttt{lean\_loogle}).
+These give the model live feedback from the Lean kernel without requiring it to
+run the compiler manually.
+
+The paper also describes a pilot experiment on intuitionistic implication
+tactics that motivated the specification-first pipeline used in the main study.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item A $2 \times 2$ empirical study of LLM tactic generation strategies.
+  \item A characterisation of the error classes that LSP feedback uniquely resolves.
+  \item A reusable pipeline: \textbf{spec} $\to$ \textbf{plan} $\to$
+        \textbf{LSP-guided implementation}.
+  \item The \texttt{limit\_auto} tactic as a concrete, verified artifact.
 \end{itemize}
 
+%%% ============================================================
 \section{Background}
+%%% ============================================================
 
-\subsection{Lean 4 and Metaprogramming}
+\subsection{Lean 4 Metaprogramming}
 
-Lean 4 is a functional programming language and interactive theorem prover. 
-Unlike its predecessor Lean 3, Lean 4 provides a unified metaprogramming 
-framework where tactics are written in Lean itself.
-
-A tactic in Lean 4 operates in the \texttt{TacticM} monad, which provides 
-access to the proof state. The key components are:
-
-\begin{itemize}
-  \item \textbf{Goals}: Represented as metavariables (\texttt{MVarId}) that need to be assigned proof terms
-  \item \textbf{Local context}: The hypotheses available in the current proof state
-  \item \textbf{Expressions}: The \texttt{Expr} type represents Lean terms, types, and proofs
-\end{itemize}
-
-\begin{lstlisting}[caption={A simple tactic that searches the local context}]
-def assumption_tactic : TacticM Unit :=
-  withMainContext do
-    let goal <- getMainGoal
-    let ctx <- getLCtx
-    for decl in ctx do
-      try
-        goal.assignIfDefEq (Expr.fvar decl.fvarId)
-        return
-      catch _ => pure ()
-    throwError "No matching assumption found"
-\end{lstlisting}
-
-\subsection{Large Language Models for Code Generation}
-
-Recent advances in large language models have demonstrated remarkable 
-capabilities in code generation. Models like GPT-4 and Claude can 
-generate syntactically correct code in many programming languages 
-when given natural language descriptions.
-
-However, generating \emph{correct} code for specialized domains 
-like theorem prover metaprogramming remains challenging due to:
+Lean~4 provides a unified metaprogramming framework in which tactics are
+written in Lean itself.  A tactic operates in the \texttt{TacticM}~monad, which
+wraps \texttt{MetaM} (for unification and type inference) and
+\texttt{ElabM} (for elaboration).  The key data types are:
 
 \begin{itemize}
-  \item Limited training data for niche languages
-  \item Complex type systems and semantic constraints
-  \item The need for domain-specific knowledge
+  \item \textbf{\texttt{Expr}}: the internal representation of Lean terms,
+        types, and proofs.  Includes \texttt{.app}, \texttt{.lam},
+        \texttt{.forallE}, \texttt{.lit}, etc.
+  \item \textbf{\texttt{MVarId}}: a metavariable standing for an open proof
+        obligation (a ``goal'').
+  \item \textbf{\texttt{Syntax}}: the raw parse tree, used to quote and
+        splice tactic expressions.
 \end{itemize}
 
-\section{System Architecture}
+A tactic is registered via
+\lstinline{syntax (name := myTac) "my_tac" : tactic} and
+\lstinline{@[tactic myTac] def evalMyTac : Tactic := fun _ => do ...}.
+The body inspects the current goal with \texttt{getMainGoal},
+reads its type with \texttt{getType},
+and can run sub-tactics via \texttt{evalTactic}.
 
-Our pipeline consists of six main stages: analysis, 
-test algorithm generation, tactic generation, test generation, validation, and repair.
+\subsection{What Makes Tactic Generation Hard}
 
-\subsection{Overview}
+Generating a working tactic with an LLM is harder than generating ordinary
+code for several reasons:
 
-\begin{figure}[h]
-\centering
-\begin{verbatim}
-+-------------------+
-| Informal Request  |
-+--------+----------+
-         |
-         v
-+-------------------+
-| 1. Analyze        | --> Structured specification
-+--------+----------+
-         |
-         v
-+-------------------+
-| 2. Test Algorithm | --> Test generation strategy
-+--------+----------+
-         |
-         v
-+-------------------+
-| 3. Generate Tactic| --> Lean 4 metaprogramming code
-+--------+----------+
-         |
-         v
-+-------------------+
-| 4. Generate Tests | --> N test theorems (configurable)
-+--------+----------+
-         |
-         v
-+-------------------+
-| 5. Validate       | --> Compile with Lake
-+--------+----------+
-         |
-    +----+----+
-    | Errors? |
-    +----+----+
-    Yes  |  No
-    v    |
-+-------+|
-| Repair||---> Output validated tactic + tests
-+---+---+|
-    |    |
-    +----+ (retry up to N rounds)
-\end{verbatim}
-\caption{Single-tactic pipeline architecture}
-\end{figure}
+\begin{enumerate}
+  \item \textbf{Mathlib API names.}  Mathlib contains tens of thousands of
+        lemmas with non-obvious, versioned names.  Names change between
+        releases (deprecation), and no LLM can reliably memorise all current
+        identifiers.
 
-\begin{figure}[h]
-\centering
-\begin{verbatim}
-+----------------------+
-| specifications.json  |  (multiple user specifications)
-+----------+-----------+
-           |
-           v
-+----------------------+
-| 0. Split Spec        | --> Identify multiple tactics
-+----------+-----------+
-           |
-    +------+------+
-    |             |
-    v             v
-+--------+   +--------+
-| Spec 1 |   | Spec N |  ... (one or more tactics)
-+---+----+   +---+----+
-    |             |
-    v             v
-+--------+   +--------+
-|Pipeline|   |Pipeline|  (full single-tactic pipeline)
-+---+----+   +---+----+
-    |             |
-    v             v
-+----------------------+
-| Aggregate Results    | --> JSON report
-+----------------------+
-\end{verbatim}
-\caption{Batch processing architecture}
-\end{figure}
+  \item \textbf{Elaboration order.}  Lean's elaborator processes terms in a
+        specific order.  Writing \texttt{exact f (by tac)} can cause
+        \texttt{tac} to run before metavariables from the surrounding
+        unification are resolved, producing errors that are invisible to
+        static analysis.
 
-\begin{figure}[h]
-\centering
-\begin{verbatim}
-+------------------+     +------------------+
-| existing.lean    |     | existing.spec.md |
-+--------+---------+     +--------+---------+
-         |                        |
-         v                        v
-+----------------------------------------+
-| 1. Parse existing tests & specification |
-+-------------------+--------------------+
-                    |
-                    v
-+----------------------------------------+
-| 2. Generate N additional tests          |
-|    (non-duplicates, following algorithm)|
-+-------------------+--------------------+
-                    |
-                    v
-+----------------------------------------+
-| 3. Append tests to file                 |
-+-------------------+--------------------+
-                    |
-                    v
-+----------------------------------------+
-| 4. Validate & Repair                    |
-|    (update tactic if tests fail)        |
-+-------------------+--------------------+
-                    |
-                    v
-+----------------------------------------+
-| 5. Save updated file                    |
-+----------------------------------------+
-\end{verbatim}
-\caption{Update pipeline architecture}
-\end{figure}
+  \item \textbf{Definition unfolding.}  \texttt{whnf} (weak-head normal form)
+        aggressively unfolds definitions.  Calling \texttt{whnf} on a
+        \texttt{Tendsto~f~F~G} expression silently unfolds \texttt{Filter.Tendsto}
+        to \texttt{F.map~f~$\leq$~G}, making subsequent pattern matching fail.
 
-\subsection{Analysis Stage}
+  \item \textbf{Syntax node kinds.}  A multi-step tactic sequence has kind
+        \texttt{tactic.seq}, not \texttt{tactic}.  Helpers typed as
+        \texttt{TSyntax `tactic} reject sequences, causing type errors at
+        the call site rather than the source of the mistake.
+\end{enumerate}
 
-The analysis stage extracts structured information from the informal 
-request, beginning with a \emph{scope analysis} before producing a \emph{mathematical specification}:
+\subsection{Prior Work}
 
-\begin{itemize}
-  \item \textbf{Tactic name}: A suitable identifier for the tactic
-  \item \textbf{Scope Analysis}: Before committing to a specification, the LLM reasons about:
-    \begin{itemize}
-      \item The most general interpretation of the user's request
-      \item Constraints imposed by Lean 4 metaprogramming (decidability, available APIs)
-      \item Implementation complexity trade-offs
-      \item The chosen scope, with justification
-    \end{itemize}
-  \item \textbf{Mathematical Specification}: A rigorous characterization including:
-    \begin{itemize}
-      \item The class of formulas/goals handled (using set-builder notation)
-      \item The logical fragment (propositional, first-order, etc.)
-      \item Precise provability conditions
-    \end{itemize}
-  \item \textbf{Algorithm}: Step-by-step description of the proof search procedure
-  \item \textbf{Success criteria}: When the tactic succeeds vs.\ fails
-  \item \textbf{Edge cases}: Potential failure modes to handle
-\end{itemize}
+LLM-based theorem proving has received significant attention.
+LEGO-Prover~\cite{xia2024legoprover} accumulates reusable proof skills across sessions.
+LeanDojo / ReProver~\cite{yang2024leandojo} retrieval-augments a language model
+for Lean proof generation.
+Hypertree Proof Search~\cite{lample2022hypertree} uses MCTS guided by a learned policy.
+More recent systems---DeepSeek-Prover~\cite{deepseek2024prover},
+AlphaProof~\cite{alphaproof2024}, and commercial efforts such as
+Harmonic~\cite{harmonic2024}---have pushed the frontier of automated theorem proving
+using reinforcement learning and large-scale Lean interaction.
+All of these target \emph{proof generation}: finding sequences of \emph{existing} tactics.
+\emph{Tactic synthesis}---generating new, reusable tactic procedures from
+specifications---has received almost no attention in the literature,
+despite being a practically important problem for library development.
+Our work targets this gap.
 
-The scope analysis is crucial: it forces the LLM to find the right balance 
-between generality (handling a broad class of formulas) and feasibility 
-(what can actually be implemented in Lean). For example, for an implication-selecting tactic:
+Program synthesis from natural language specifications has been studied
+extensively~\cite{gulwani2017program}, but the domain of
+Lean metaprogramming combines a highly specialised API with strong
+type-correctness requirements that differ qualitatively from general
+code generation.
 
+%%% ============================================================
+\section{Pilot: Intuitionistic Implication Tactic}
+%%% ============================================================
+
+\comment{I don't know if it should be that much detailed this part, but you tell me.}
+
+Before the main study, we ran a pilot experiment to understand what makes
+LLM-driven metaprogramming succeed or fail.
+The target was a tactic that proves the implication fragment of
+intuitionistic propositional logic: goals of the form
+$P_1 \to P_2 \to \cdots \to P_n \to P_i$ where the conclusion
+is one of the hypotheses.
+
+\paragraph{Iterative approach.}
+The first approach was purely reactive: generate a tactic, feed compiler
+errors back to the LLM, and repeat.  This converged slowly.  The LLM
+corrected local errors but introduced new ones with each round, and
+without a prior specification it was unclear when the tactic was
+semantically correct rather than merely compiling.
+
+\paragraph{Spec-first approach.}
+The second approach asked the LLM to first produce a mathematical
+characterisation of the goal class:
+\[
+  \mathcal{F} = \{\,\varphi \mid \varphi \equiv P_1 \to \cdots \to P_n \to Q,
+  \ Q \in \{P_1, \ldots, P_n\}\,\}
+\]
+and to describe the proof algorithm before writing any code.
+With this specification in hand, implementation was significantly more
+directed: the LLM had a clear target and the specification served as
+an invariant during repair rounds.
+
+\paragraph{Outcome and caveats.}
+The final tactic uses gas-bounded proof search over the hypothesis context.
+It handles the target formula class correctly but is not mathematically
+complete: there exist provable formulas in the fragment that it cannot prove
+within the gas bound.  This honest limitation motivated the more rigorous
+spec-first pipeline used for the main study, and foreshadowed the key insight:
+\emph{the quality of the specification determines the quality of the implementation}.
+
+%%% ============================================================
+\section{The \texttt{limit\_auto} Study}
+%%% ============================================================
+
+\subsection{The Tactic}
+\label{sec:tactic}
+
+The tactic arising from the user request above is called \texttt{limit\_auto}
+by the specification it generated for itself (Section~\ref{sec:spec}).
+It automatically proves goals of the form \texttt{Tendsto~f~F~G} by
+syntactically classifying the function~$f$ and dispatching to the appropriate Mathlib lemma.
+It targets three pattern classes:
+
+\begin{description}
+  \item[Class~1 (Continuity)]
+        $f$ is a composition of functions provably continuous by
+        \texttt{continuity} or \texttt{fun\_prop}.
+        Proof method: \texttt{Continuous.tendsto'} with the filter pair
+        $(\mathcal{N}(a),\, \mathcal{N}(f(a)))$.
+
+  \item[Class~2 (Exponential decay)]
+        $f$ syntactically mentions \texttt{Real.exp}.
+        Key lemmas: \texttt{Real.tendsto\_exp\_neg\_atTop\_nhds\_zero}
+        ($\texttt{Tendsto}\;(x \mapsto e^{-x})\;\texttt{atTop}\;(\mathcal{N}\,0)$),
+        and \texttt{Real.tendsto\_exp\_atBot}.
+
+  \item[Class~3 (Reciprocal)]
+        $f = x \mapsto x^{-1}$ in a normed division ring.
+        Key lemmas: \texttt{Filter.tendsto\_inv$\text{\_}$0\_nhdsNE\_zero}
+        and \texttt{Filter.tendsto\_inv$\text{\_}$0\_cobounded'}.
+\end{description}
+
+Additionally, the tactic performs a safety check that rejects syntactically
+indeterminate forms ($t/t$, $(t{-}a)/(t{-}a)$, $t/0$, $0/0$)
+before attempting any proof.
+
+\subsection{The Specification}
+\label{sec:spec}
+
+The specification was generated by Claude~Sonnet from the one-line user request:
 \begin{quote}
-\textbf{Scope Analysis}: The most general interpretation would handle arbitrary intuitionistic proofs, 
-but this requires full proof search. A feasible scope is right-associative implication chains 
-where the conclusion matches a premise---this is decidable and directly implementable 
-using \texttt{intro} and hypothesis matching.
-
-\textbf{Formula Class}: $\mathcal{F} = \{\varphi \mid \varphi \equiv 
-P_1 \to P_2 \to \cdots \to P_n \to Q \text{ where } Q \in \{P_1, \ldots, P_n\}\}$
-
-\textbf{Provability}: $\forall \varphi \in \mathcal{F}.\; \vdash \varphi \iff \exists i.\; P_i \equiv Q$
+\textit{``A tactic that proves limit statements (tendsto goals) by analysing
+the mathematical structure of the limit expression\ldots''}
 \end{quote}
-
-This specification serves as the formal contract for the tactic and is preserved throughout the pipeline.
-
-\subsection{Test Algorithm Generation Stage}
-
-Before generating the tactic implementation, we first generate a \emph{test generation algorithm}. 
-This is a key innovation of our approach: rather than generating test cases directly, we ask the LLM 
-to design a systematic method for generating tests based on its understanding of the tactic's specification.
-
-The test algorithm typically includes:
-\begin{itemize}
-  \item \textbf{Formula structure}: What shapes of formulas the tactic handles (e.g., implication chains, conjunctions)
-  \item \textbf{Parameters}: Variables that can be adjusted (number of propositions, nesting depth)
-  \item \textbf{Provability criteria}: Conditions that ensure generated theorems are actually provable by the tactic
-  \item \textbf{Difficulty progression}: How to order tests from simple to complex
-\end{itemize}
-
-For example, for implicational tactics, the algorithm might specify enumerating formulas 
-like $A \to B \to A$ where the conclusion matches one of the premises.
-
-\subsection{Tactic Generation Stage}
-
-The tactic generation stage produces Lean 4 code based on the structured specification. We provide the LLM with:
-
-\begin{enumerate}
-  \item The structured specification from the analysis stage
-  \item A comprehensive tutorial on Lean 4 metaprogramming (based on \cite{tactic-guide})
-  \item Example tactic implementations
-  \item The required output format
-\end{enumerate}
-
-\subsubsection{Output Format}
-
-Generated tactics follow a standardized format:
-
-\begin{lstlisting}[caption={Required output format}]
-import Lean
-open Lean Meta Elab.Tactic
-
-/-- Helper to run a TacticM function in a proof. -/
-elab "run_tac" tac:ident : tactic => do
-  let name := tac.getId
-  let some (.defnInfo _) := (<- getEnv).find? name
-    | throwError s!"unknown tactic function: {name}"
-  let tacticFn <- unsafe evalConst (TacticM Unit) name
-  tacticFn
-
-/-- Documentation for the tactic. -/
-def tactic_name : TacticM Unit := do
-  -- Implementation
-\end{lstlisting}
-
-The \texttt{run\_tac} elaborator allows invoking \texttt{TacticM} functions directly in proofs, 
-enabling immediate testing of generated tactics without requiring custom syntax declarations.
-
-\subsubsection{Specification Embedding}
-
-The mathematical specification from the analysis stage is embedded directly in the generated 
-file as a module-level documentation comment:
-
-\begin{lstlisting}[caption={Specification embedded in generated code}]
-/-!
-# Tactic: select_hypothesis
-
-## Mathematical Specification
-F = {phi | phi = P1 -> P2 -> ... -> Pn -> Q
-     where Q in {P1, ..., Pn}}
-
-## Algorithm
-1. Parse goal as nested implications
-2. Introduce all hypotheses
-3. Find and apply matching hypothesis
--/
-\end{lstlisting}
-
-Additionally, a separate \texttt{.spec.md} file is saved alongside the \texttt{.lean} file, 
-containing the original request, full analysis, and test generation algorithm. This serves as 
-a permanent record and enables traceability from informal specification to implementation.
-
-\subsection{Test Generation Stage}
-
-Using the test algorithm from Stage 2, we generate a configurable number of test theorems. 
-The tests are structured to provide comprehensive coverage:
-
-\begin{itemize}
-  \item \textbf{First third}: Simplest cases with minimal variables
-  \item \textbf{Middle third}: Medium complexity with more variables and deeper nesting
-  \item \textbf{Final third}: Edge cases and maximum complexity the tactic should handle
-\end{itemize}
-
-All tests use \texttt{run\_tac tactic\_name} as the proof, ensuring they compile if and 
-only if the tactic succeeds. The number of tests is user-configurable (default: 10).
-
-\subsection{Validation Stage}
-
-Generated code is validated by compiling it with the Lean toolchain:
-
-\begin{verbatim}
-lake env lean <generated_file.lean>
-\end{verbatim}
-
-The validator parses compiler output to extract:
-\begin{itemize}
-  \item Errors with line numbers and messages
-  \item Warnings (optionally treated as errors)
-\end{itemize}
-
-\subsection{Repair Stage}
-
-When validation fails, the repair stage attempts to fix the code by:
-
-\begin{enumerate}
-  \item Providing the LLM with the original code and error messages
-  \item Requesting a corrected version
-  \item Re-validating the result
-\end{enumerate}
-
-This process repeats up to a configurable maximum number of rounds (default: 4).
-
-\section{Design Choices}
-
-\subsection{Model Abstraction}
-
-The pipeline supports multiple LLM providers through an abstract interface:
-
-\begin{lstlisting}[language=Python,caption={LLM abstraction layer}]
-class LLMModel(ABC):
-    @abstractmethod
-    def generate(self, prompt: str,
-                 system: Optional[str] = None) -> str:
-        pass
-\end{lstlisting}
-
-This design allows easy switching between providers (OpenAI, Anthropic, OpenRouter) and facilitates
-future extensions to local models. OpenRouter support enables access to a wide variety of models
-(including Google Gemini, Meta LLaMA, Mistral, and others) through a unified API.
-
-\subsection{Batch Processing and Multi-Tactic Specifications}
-
-Real-world tactic requests often describe multiple related but distinct tactics in a single specification.
-For example, a user might request ``a tactic that can compute polynomial equality, coefficient extraction,
-and leading term.'' Rather than generating a monolithic tactic, our system:
-
-\begin{enumerate}
-  \item \textbf{Specification Splitting}: An LLM analyzes the user specification to identify distinct tactics.
-  Each is extracted as a self-contained specification with its own name and description.
-  \item \textbf{Independent Generation}: Each split specification goes through the full pipeline independently,
-  producing separate tactic files.
-  \item \textbf{Aggregated Reporting}: Results are collected and reported together, showing success/failure
-  per tactic and per original specification.
-\end{enumerate}
-
-This approach has several advantages:
-\begin{itemize}
-  \item \textbf{Modularity}: Each tactic is self-contained and can be used independently
-  \item \textbf{Targeted repair}: If one tactic fails, others are unaffected
-  \item \textbf{Clearer specifications}: Smaller, focused specifications lead to better-defined tactics
-\end{itemize}
-
-The batch mode also supports processing multiple specifications from a JSON configuration file,
-enabling systematic generation of tactic suites from curated specification collections.
-
-\subsection{Incremental Update Pipeline}
-
-Once a tactic is generated, it may need to be improved to handle additional cases. Our \emph{update pipeline}
-enables incremental enhancement without regenerating from scratch:
-
-\begin{enumerate}
-  \item \textbf{Specification Reuse}: The original specification and test generation algorithm
-  (stored in the \texttt{.spec.md} file) guide the generation of new tests
-  \item \textbf{Non-duplicate Tests}: The LLM is shown existing tests and instructed to generate
-  novel cases covering different parameters, edge cases, or complexity levels
-  \item \textbf{Targeted Repair}: When new tests fail, the repair prompt focuses on extending
-  the tactic's capabilities rather than rewriting it entirely
-\end{enumerate}
-
-This incremental approach has several benefits:
-\begin{itemize}
-  \item \textbf{Preserves working functionality}: Existing tests continue to pass
-  \item \textbf{Gradual capability expansion}: The tactic grows to handle more cases over iterations
-  \item \textbf{Efficient use of LLM calls}: Only new tests and targeted repairs are generated
-  \item \textbf{Convergence toward specification}: Repeated updates can help the tactic
-  asymptotically cover its full specification
-\end{itemize}
-
-\subsection{Mathlib Configuration}
-
-The system supports an optional Mathlib dependency through a configuration flag. When enabled:
-\begin{itemize}
-  \item Generated tactics can import Mathlib modules
-  \item The prompt includes Mathlib-specific guidance
-  \item More sophisticated mathematical tactics become possible
-\end{itemize}
-
-When disabled, tactics are restricted to core Lean and the Batteries library, ensuring minimal dependencies.
-
-\subsection{Tutorial Integration}
-
-We integrate content from the Lean Tactic Programming Guide \cite{tactic-guide} directly 
-into the generation prompt. This provides:
-\begin{itemize}
-  \item Concrete examples of working tactics
-  \item Common metaprogramming patterns
-  \item Idiomatic Lean 4 style
-\end{itemize}
-
-\subsection{Specification-First Design}
-
-A crucial design choice is requiring a formal mathematical specification \emph{before} implementation. This serves multiple purposes:
-
-\begin{itemize}
-  \item \textbf{Semantic clarity}: Forces the LLM to precisely characterize what the tactic proves, using set-builder notation and provability conditions
-  \item \textbf{Implementation guidance}: The specification constrains the implementation, reducing the space of possible (incorrect) solutions
-  \item \textbf{Test generation}: The specification directly informs what test cases should be generated
-  \item \textbf{Repair consistency}: During repair, the specification ensures fixes maintain semantic correctness
-  \item \textbf{Documentation}: The embedded specification serves as authoritative documentation
-\end{itemize}
-
-This approach mirrors formal methods practice, where specifications precede implementations. The specification is passed to all subsequent stages (test algorithm, tactic generation, test generation, repair), ensuring consistency throughout the pipeline.
-
-\subsection{Two-Phase Test Generation}
-
-A key design choice is separating test generation into two phases: algorithm design and test instantiation. This approach has several advantages:
-
-\begin{itemize}
-  \item \textbf{Systematic coverage}: The algorithm ensures tests cover the space of valid inputs methodically
-  \item \textbf{Provability guarantee}: The algorithm explicitly encodes what makes a formula provable by the tactic
-  \item \textbf{Difficulty ordering}: Tests progress from trivial to challenging, aiding debugging
-  \item \textbf{Configurability}: Users can request any number of tests without changing the generation logic
-\end{itemize}
-
-This is more robust than generating tests directly, which often produces duplicates or invalid cases.
-
-\section{Evaluation}
-
-\subsection{Experimental Setup}
-
-% TODO: Add experimental details
-
-\subsection{Results}
-
-% TODO: Add results
-
-\subsection{Case Study: Propositional Logic Tactics}
-
-We evaluated the system on generating tactics for intuitionistic propositional logic. Example specification:
-
-\begin{quote}
-``Create a tactic that proves implications of the form $A \to B \to A$ or $A \to B \to B$ by introducing hypotheses and selecting the appropriate one.''
-\end{quote}
-
-The system first generated a test algorithm specifying:
-\begin{itemize}
-  \item Formulas of the form $P_1 \to P_2 \to \cdots \to P_n \to P_i$ where $P_i$ is one of the premises
-  \item Variable count ranging from 1 to 6 propositions
-  \item Ordering by number of premises (simple to complex)
-\end{itemize}
-
-The generated tactic uses recursive helper functions to collect all premises and find a matching hypothesis:
-
-\begin{lstlisting}[caption={Generated propositional logic tactic (excerpt)}]
-/-- Recursively collect all premise types -/
-partial def collectPremises (type : Expr)
-    : MetaM (Array Expr * Expr) := do
-  let type <- whnf type
-  match type with
-  | .forallE _ domain body _ =>
-    let (rest, conclusion) <- collectPremises body
-    return (#[domain] ++ rest, conclusion)
-  | _ => return (#[], type)
-
-/-- Main tactic: select matching hypothesis -/
-def select_hyp : TacticM Unit := do
-  withMainContext do
-    let goal <- getMainGoal
-    let (premises, conclusion) <- collectPremises
-                                    (<- goal.getType)
-    -- Find which premise matches conclusion
-    for i in [:premises.size] do
-      if <- isDefEq conclusion premises[i]! then
-        introAndSelect premises.size i
-        return
-    throwError "No matching hypothesis"
-\end{lstlisting}
-
-The system generated 15 test theorems covering cases from $A \to A$ (simplest) to $P \to Q \to R \to S \to T \to U \to U$ (most complex), all compiling successfully after 2 repair rounds.
-
+Before writing any code, the model was asked to produce:
+(1)~a \emph{scope analysis} identifying the most feasible interpretation
+given Lean's constraints;
+(2)~a \emph{mathematical specification} naming the three classes with their
+filter-pair conditions;
+(3)~a \emph{test generation algorithm} describing how to systematically
+enumerate provable \texttt{Tendsto} goals ordered by difficulty.
+
+This specification served as the shared anchor for all four conditions:
+every implementation was required to realise the same semantic contract.
+The spec is stored at \texttt{experiments/limit\_auto/spec.md}.
+
+\subsection{Study Design}
+
+We study four strategies for \emph{generating} \texttt{limit\_auto} (Table~\ref{tab:design}).
+
+\begin{table}[h]
+\centering
+\caption{$2 \times 2$ study design.}
+\label{tab:design}
+\begin{tabular}{lcc}
+\toprule
+                    & \textbf{No milestone plan} & \textbf{With milestone plan} \\
+\midrule
+\textbf{No LSP}     & A: \textit{one\_run/} (empty)    & B: \textit{plan\_without\_lsp/} \\
+\textbf{With LSP}   & C: \textit{one\_shot\_with\_lsp/} & D: \textit{plan\_with\_lsp/} (best) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The two non-LSP conditions (A, B) use a \emph{self-correction loop}: after each
+generation step, if the file does not compile, all material plus the Lean error
+messages are fed back to the model for a repair round (up to a fixed budget).
+The two LSP conditions (C, D) use no explicit repair loop: the model interacts
+live with the Lean kernel via LSP tools and produces correct code directly.
+
+\textbf{Condition A} (no plan, no LSP) is the baseline: a single API call
+with the spec as the only context, followed by self-correction.
+\textbf{Condition B} (plan, no LSP) first generates a milestone plan,
+then implements each milestone via separate API calls with self-correction but
+no live compiler access.
+\textbf{Condition C} (no plan, LSP) is a one-shot implementation in
+Claude Code with full LSP tool access throughout.
+\textbf{Condition D} (plan + LSP) combines a 9-milestone plan with LSP
+feedback at each step; this is the main positive condition.
+
+\subsection{Results per Condition}
+\label{sec:results}
+
+\paragraph{Condition A.}
+The raw one-shot API call produced an empty file.  The model declined to
+generate metaprogramming code without further context, and the repair loop
+produced no usable output.  This confirms the null hypothesis: bare
+one-shot generation is not a viable strategy for tactic synthesis.
+The most likely explanation is that the first generation attempt produced
+compiler errors, after which the self-correction loop continued for many rounds
+without converging: without structural guidance or live feedback, there is no
+gradient to drive the model toward a working implementation.
+
+\paragraph{Condition B.}
+The milestone plan (five milestones) gave the model a structured decomposition
+of the problem. The generated code compiled, but several tests failed at
+runtime. The root cause was incorrect Mathlib lemma names: without a live
+compiler, the model used names it ``knew'' from training data, including a
+deprecated identifier
+(\texttt{tendsto\_inv$\text{\_}$0\_nhdsWithin\_ne\_zero}, renamed to
+\texttt{tendsto\_inv$\text{\_}$0\_nhdsNE\_zero}).
+The plan helped with architecture but could not substitute for API verification.
+
+\paragraph{Condition C.}
+One-shot implementation with LSP access produced a working tactic with zero
+compiler errors after iterative self-repair driven by \texttt{lean\_diagnostic\_messages}.
+All tests pass.  The implementation is slightly less structured than
+Condition~D (no explicit milestone decomposition) but is functionally correct.
+This result shows that LSP access matters more than planning alone:
+C (no plan, LSP) strictly dominates B (plan, no LSP).
+
+\paragraph{Condition D.}
+The nine-milestone plan with LSP feedback at each step produced the most
+complete result: zero errors, the richest test suite, and the most readable
+architecture with clearly separated helper functions, named pattern classes,
+and a registered trace class (\texttt{limit\_auto}) for debugging.
+The milestone plan provided \emph{error isolation}---bugs introduced in one
+milestone were caught before they could propagate---and \emph{monotonic test growth}:
+each milestone added new tests that were never broken by subsequent milestones.
+
+\subsection{Concrete Failure Modes Fixed by LSP}
+\label{sec:failures}
+
+The LSP tools used in Condition~D include
+\texttt{lean\_diagnostic\_messages} (compiler errors/warnings),
+\texttt{lean\_goal} (proof state inspection),
+\texttt{lean\_leansearch} (natural-language Mathlib search),
+\texttt{lean\_loogle} (type-pattern search),
+\texttt{lean\_multi\_attempt} (testing multiple tactics without editing),
+and \texttt{lean\_local\_search} (local declaration search).
+Together they caught four classes of errors that the LLM could not predict:
+
+\paragraph{(1) \texttt{whnf} unfolds \texttt{Filter.Tendsto}.}
+An early version called \texttt{whnf} on the goal before pattern-matching.
+\texttt{whnf} aggressively unfolds \texttt{Filter.Tendsto} to its definition
+$F.\texttt{map}\,f \leq G$, making \texttt{matchTendsto?} always return
+\texttt{none}.  The tactic failed on every goal with the message
+``goal is not of the form Tendsto~f~F~G''.
+\texttt{lean\_goal} at the matching site revealed that the goal type had
+already been unfolded.  Fix: remove the \texttt{whnf} call entirely and
+match on \texttt{instantiateMVars ty} directly.
+
+\paragraph{(2) \texttt{TSyntax `tactic} vs.\ \texttt{tactic.seq}.}
+The helper \texttt{tryTac} was originally typed as
+\texttt{tryTac : TSyntax `tactic $\to$ TacticM Bool}.
+Multi-step sequences such as
+\texttt{apply Continuous.tendsto' <;> first | continuity | norm\_num}
+have syntax node kind \texttt{tactic.seq}, not \texttt{tactic},
+causing a type error at every call site that used a compound tactic.
+\texttt{lean\_diagnostic\_messages} identified the kind mismatch.
+Fix: change the argument type to \texttt{Syntax}
+(which \texttt{evalTactic} accepts directly).
+
+\paragraph{(3) \texttt{simp} inside \texttt{exact~f~(by~simp)}.}
+For continuity goals with numeric targets (e.g., $2+1=3$),
+the natural proof is \texttt{exact Continuous.tendsto' (by continuity) \_ \_ (by simp)}.
+However, when \texttt{simp} runs inside a term elaboration context and makes
+no progress, it writes an error to the message log \emph{before} throwing an
+exception---so the error persists even when \texttt{tryTac} catches it.
+This produced spurious diagnostics even on successful proofs.
+Fix: replace the term-mode form with
+\texttt{apply Continuous.tendsto' <;> first | continuity | norm\_num | ring | rfl | simp},
+which runs tactics in sequence on subgoals and avoids the elaboration issue.
+
+\paragraph{(4) Deprecated lemma names.}
+\texttt{lean\_leansearch} in Milestone~6 found the cobounded inverse lemma as
+\texttt{Filter.tendsto\_inv$\text{\_}$0\_nhdsWithin\_ne\_zero}.  The compiler
+immediately flagged a deprecation warning:
+the current name is \texttt{Filter.tendsto\_inv$\text{\_}$0\_nhdsNE\_zero}.
+Without LSP access (Condition~B), the model used the old name, causing
+the reciprocal tests to fail at runtime.
+
+\bigskip
+
+A summary of the complete LSP tool usage in Condition~D is given in
+Table~\ref{tab:lsp}.
+
+\begin{table}[h]
+\centering
+\caption{LSP tools used in Condition~D (9-milestone implementation).}
+\label{tab:lsp}
+\begin{tabular}{llr}
+\toprule
+\textbf{Tool} & \textbf{Purpose} & \textbf{Uses} \\
+\midrule
+\texttt{lean\_diagnostic\_messages} & Compiler errors/warnings at each milestone & 18 \\
+\texttt{lean\_leansearch}           & Natural-language Mathlib lemma search     & 6  \\
+\texttt{lean\_loogle}               & Type-pattern Mathlib search               & 3  \\
+\texttt{lean\_multi\_attempt}       & Test multiple tactics without editing     & 2  \\
+\texttt{lean\_goal}                 & Proof state inspection                    & 2  \\
+\texttt{lean\_local\_search}        & Local declaration search                  & 4  \\
+\texttt{lean\_hover\_info}          & Type signature of an identifier           & 1  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+Table~\ref{tab:lsp} is derived from \texttt{experiments/limit\_auto/plan\_with\_lsp/lsp\_log.md},
+which records every LSP tool call made during Condition~D.
+The model used was Claude~Sonnet~4.6, running inside Claude Code
+with a \texttt{CLAUDE.md} project file specifying the Lean toolchain and Mathlib imports.
+All four condition outputs are archived in \texttt{experiments/limit\_auto/}.
+\comment{Should we point at implementation files in an academic paper? Suggestion:
+reference the repository URL rather than file paths for the camera-ready version.}
+
+%%% ============================================================
+\section{Discussion}
+%%% ============================================================
+
+\paragraph{The specification is the hardest step.}
+All four conditions shared the same specification, yet only the implementations
+with LSP access produced correct code.  This suggests that a bad specification
+is fatal regardless of scaffolding, while a good specification is necessary but
+not sufficient.  Investing effort in specification quality---scope analysis,
+precise class definitions, provability conditions---is the highest-leverage
+action in the pipeline.
+
+\paragraph{LSP feedback is essential for API correctness.}
+No LLM can reliably memorise the current state of Mathlib's tens of thousands
+of lemma names, especially as names are deprecated and renamed across releases.
+The results confirm this: Condition~B failed not from logical mistakes but from
+stale API knowledge.  A live compiler acts as a ground truth that the model
+cannot replicate internally.
+
+\paragraph{Plans provide error isolation, not API knowledge.}
+The milestone plan in Condition~D did not contribute to correct lemma names---
+that was the role of \texttt{lean\_leansearch} and \texttt{lean\_loogle}.
+What the plan contributed was \emph{modularity}: each milestone had a narrow
+scope, so errors introduced at one step were caught before they could obscure
+errors at later steps.  The plan also ensured that each milestone added new
+tests, giving a concrete definition of ``done'' at each step.
+
+\paragraph{Condition~C beats Condition~B.}
+This ordering---one-shot with LSP access beats planned without LSP---is perhaps
+the sharpest result of the study.  It implies that tool access to the live
+compiler is more valuable than decomposing the problem into milestones, at
+least for a tactic of this size.  For larger tactics, the balance may shift.
+
+%%% ============================================================
 \section{Related Work}
+%%% ============================================================
 
-\subsection{LLM-Based Theorem Proving}
+\paragraph{LLM-based proof generation.}
+LEGO-Prover~\cite{xia2024legoprover} uses an LLM to generate and accumulate
+reusable proof ``skills'' across a session.  Copilot for Lean~\cite{han2022proof}
+and ReProver~\cite{yang2024leandojo} train models to predict the next tactic
+in a proof.  Hypertree Proof Search~\cite{lample2022hypertree} frames proof
+generation as MCTS with a learned policy.  These works target \emph{proof
+generation}---finding sequences of \emph{existing} tactics---whereas our work
+targets \emph{tactic synthesis}: generating new, reusable tactic procedures.
 
-% TODO: Discuss related work on LLMs for theorem proving
+\paragraph{Program synthesis from natural language.}
+The literature on program synthesis from specifications is extensive;
+see~\cite{gulwani2017program} for a survey.  LLM-based code generation
+(Codex~\cite{chen2021codex}, AlphaCode~\cite{li2022competition}) has
+demonstrated strong performance on standard benchmarks.
+Lean metaprogramming is qualitatively harder because correctness requires
+type-level compliance with a complex API.
 
-\subsection{Tactic Learning}
+\paragraph{Tool-augmented LLMs.}
+Using tools (compilers, search engines, REPL environments) to augment LLM
+reasoning has become standard practice~\cite{schick2023toolformer}.
+Our work is an instance of this paradigm applied to Lean metaprogramming,
+with the Lean LSP server as the primary tool.
+Closest in spirit is the use of REPL feedback in
+AlphaCode~2~\cite{alphacode2} and in interactive proof
+assistants~\cite{first2023baldur}.
 
-% TODO: Discuss tactic learning approaches
-
-\subsection{Program Synthesis}
-
-% TODO: Discuss program synthesis
-
-\section{Limitations and Future Work}
-
-\subsection{Current Limitations}
-
-\begin{itemize}
-  \item Generated tactics may be overly specific to the examples in the specification
-  \item Complex tactics requiring deep mathematical insight remain challenging
-  \item The repair mechanism has limited ability to fix fundamental design errors
-\end{itemize}
-
-\subsection{Future Directions}
-
-\begin{itemize}
-  \item Integration with proof search to guide tactic design
-  \item Learning from existing Mathlib tactics
-  \item Interactive refinement with user feedback
-  \item Formal verification of generated tactics
-\end{itemize}
-
+%%% ============================================================
 \section{Conclusion}
+%%% ============================================================
 
-We presented a pipeline for automatically generating Lean 4 tactics from informal specifications. The system combines LLM-based code generation with compiler-driven repair to produce working metaprogramming code. Our modular architecture supports multiple LLM providers and configurable dependencies, making it adaptable to different use cases.
+We have presented an empirical $2 \times 2$ study of LLM strategies for
+Lean~4 tactic generation, using the \texttt{limit\_auto} tactic as a
+test case.  The main findings are:
+\begin{enumerate}
+  \item Raw one-shot generation is not viable.
+  \item A formal specification anchors all conditions and is the prerequisite
+        for any successful generation.
+  \item LSP feedback fixes errors (wrong API names, elaboration pitfalls)
+        that LLMs cannot predict statically.
+  \item Milestone planning and LSP feedback are complementary, and their
+        combination produces the most complete result.
+\end{enumerate}
 
-% TODO: Summarize key findings
+\paragraph{Future work.}
+The most immediate next step is to run the same study on additional tactics
+to test whether the ordering of conditions is robust.  Longer-term, we hope
+to build a benchmark suite of ``tactics from specifications'' that the
+community can use to evaluate LLM-assisted metaprogramming systems, and to
+study whether the pipeline generalises to tactics that require deeper
+mathematical reasoning than pattern matching.
 
+%%% ============================================================
 \bibliographystyle{plain}
 \begin{thebibliography}{9}
 
-\bibitem{tactic-guide}
-Miroslav Olšák.
-\textit{Lean Tactic Programming Guide}.
-\url{https://github.com/mirefek/lean-tactic-programming-guide}, 2024.
+\bibitem{xia2024legoprover}
+Huajian Xia et al.
+\textit{LEGO-Prover: Neural Theorem Proving with Growing Libraries}.
+ICLR 2024.
+
+\bibitem{han2022proof}
+Jesse Michael Han, Jason Rute, Yuhuai Wu, Edward Ayers, Stanislas Polu.
+\textit{Proof Artifact Co-Training}.
+ICLR 2022.
+
+\bibitem{yang2024leandojo}
+Kaiyu Yang et al.
+\textit{LeanDojo: Theorem Proving with Retrieval-Augmented Language Models}.
+NeurIPS 2023.
+
+\bibitem{lample2022hypertree}
+Guillaume Lample et al.
+\textit{HyperTree Proof Search for Neural Theorem Proving}.
+NeurIPS 2022.
+
+\bibitem{gulwani2017program}
+Sumit Gulwani, Oleksandr Polozov, Rishabh Singh.
+\textit{Program Synthesis}.
+Foundations and Trends in Programming Languages, 2017.
+
+\bibitem{chen2021codex}
+Mark Chen et al.
+\textit{Evaluating Large Language Models Trained on Code}.
+arXiv:2107.03374, 2021.
+
+\bibitem{li2022competition}
+Yujia Li et al.
+\textit{Competition-Level Code Generation with AlphaCode}.
+Science 378(6624), 2022.
+
+\bibitem{schick2023toolformer}
+Timo Schick et al.
+\textit{Toolformer: Language Models Can Teach Themselves to Use Tools}.
+NeurIPS 2023.
+
+\bibitem{alphacode2}
+Google DeepMind.
+\textit{AlphaCode 2 Technical Report}.
+2023.
+
+\bibitem{first2023baldur}
+Emily First, Markus Rabe, Talia Ringer, Yuriy Brun.
+\textit{Baldur: Whole-Proof Generation and Repair with Large Language Models}.
+ESEC/FSE 2023.
+
+\bibitem{deepseek2024prover}
+DeepSeek-AI.
+\textit{DeepSeek-Prover-V1.5: Harnessing Proof Assistant Feedback for
+Reinforcement Learning and Monte-Carlo Tree Search}.
+arXiv:2408.08152, 2024.
+
+\bibitem{alphaproof2024}
+Google DeepMind.
+\textit{AI achieves silver-medal standard solving International Mathematical
+Olympiad problems} (AlphaProof).
+Technical Report, 2024.
+
+\bibitem{harmonic2024}
+Harmonic.
+\textit{Harmonic: Formal Mathematics with AI}.
+\url{https://harmonic.fun}, 2024.
 
 \bibitem{lean4}
 Leonardo de Moura and Sebastian Ullrich.
-\textit{The Lean 4 Theorem Prover and Programming Language}.
+\textit{The Lean~4 Theorem Prover and Programming Language}.
 CADE 2021.
 
 \bibitem{mathlib}
-The mathlib Community.
+The Mathlib Community.
 \textit{The Lean Mathematical Library}.
 CPP 2020.
-
-% TODO: Add more references
 
 \end{thebibliography}
 

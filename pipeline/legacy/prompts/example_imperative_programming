@@ -1,0 +1,43 @@
+/-
+Use that `Lean` can write code in more imperative
+style than many other functional languages. By launching
+`Id.run do`, we get into a Monad mode which allows
+* `for` loops with `break`, and `continue`
+* `let mut` for declaring a variable that can be mutated.
+* `return` for immediate interruption
+* `if` without else branch
+* `Array` is usually more efficient than `List` for
+  * random access (constant time operation)
+  * updating: Semantically,
+    `Array.set! i x`, or `Array.push!`
+    creates a copy, however is we never use
+    the original array again, Lean's compiler recognizes
+    that, and does efficient in-place operation.
+
+Indeed, it cannot do full procedural programming
+(editing via references, while loops) but using
+the existing procedural programming features can
+help writing a more readable code.
+
+For example, this is a program written in Lean 4
+for decomposing a number into prime numbers.
+-/
+
+def prime_factor (n : Nat) : Array (Nat × Nat) := Id.run do
+  if n = 0 then return #[(0, 1)]
+  let mut res : Array (Nat × Nat) := #[]
+  let mut d := 2
+  let mut n := n -- mutable copy of the number we are gradually decomposing
+  for i in [:n] do -- Lean needs an upper bound, although we will exit sooner
+    if n % d == 0 then
+      let mut exp := 0
+      for _ in [:n] do
+        exp := exp+1
+        n := n / d
+        if n % d ≠ 0 then break
+      res := res.push (d, exp)
+    if d == 2 then d := 3
+    else d := d+2
+    if d*d > n then break
+  if n > 1 then res := res.push (n, 1)
+  return res

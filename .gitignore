@@ -23,3 +23,6 @@ TODO.txt
 *.fls
 *.pdf
 .temp_validation/
+math_experiments/
+memory/
+results.json
