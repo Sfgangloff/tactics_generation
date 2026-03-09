@@ -570,6 +570,31 @@ with the Lean LSP server as the primary tool.
 Closest in spirit is the use of REPL feedback in
 AlphaCode~2~\cite{alphacode2} and in interactive proof
 assistants~\cite{first2023baldur}.
+SatLM~\cite{ye2023satlm} makes the connection between declarative specification
+and external verification explicit: the LLM generates a task specification and
+delegates solving to an automated prover.  Our approach mirrors this split---
+the \texttt{analyze\_request} stage produces a specification and the Lean kernel
+acts as the verifier---applied to the harder problem of metaprogramming synthesis.
+
+\paragraph{Prompting strategies for structured generation.}
+Several prompting frameworks parallel our scaffolding choices.
+\emph{Least-to-Most Prompting}~\cite{zhou2022least} and
+\emph{Plan-and-Solve Prompting}~\cite{wang2023planandsolve} decompose a complex
+problem into ordered subproblems solved sequentially---exactly the role our milestone
+plan plays in Conditions~B and~D.
+\emph{Problem Elaboration Prompting}~\cite{liao2024leap} (``look before you leap'')
+proposes clarifying problem context before reasoning, mirroring our
+specification-first approach: the \texttt{analyze\_request} stage elaborates the
+user request into a precise mathematical spec before any code is generated.
+\emph{Progressive-Hint Prompting}~\cite{zheng2023php} uses previously generated
+outputs as hints to guide subsequent attempts; the self-correction loop in
+Conditions~A and~B instantiates this pattern, feeding compiler errors back as
+hints.
+Finally, \emph{Cumulative Reasoning}~\cite{zhang2023cumulative} formalises a
+Proposer--Verifier--Reporter framework in which a Proposer generates steps, a
+Verifier checks them, and a Reporter decides when the solution is complete.
+Conditions~C and~D realise this architecture: Claude Code acts as the Proposer,
+the Lean LSP tools as the Verifier, and the model's own judgement as the Reporter.
 
 %%% ============================================================
 \section{Conclusion}
@@ -677,6 +702,36 @@ Technical Report, 2024.
 Harmonic.
 \textit{Harmonic: Formal Mathematics with AI}.
 \url{https://harmonic.fun}, 2024.
+
+\bibitem{zhou2022least}
+Denny Zhou et al.
+\textit{Least-to-Most Prompting Enables Complex Reasoning in Large Language Models}.
+ICLR 2023. arXiv:2205.10625.
+
+\bibitem{wang2023planandsolve}
+Lei Wang et al.
+\textit{Plan-and-Solve Prompting: Improving Zero-Shot Chain-of-Thought Reasoning by Large Language Models}.
+ACL 2023. arXiv:2305.04091.
+
+\bibitem{liao2024leap}
+Haoran Liao et al.
+\textit{Look Before You Leap: Problem Elaboration Prompting Improves Mathematical Reasoning in Large Language Models}.
+arXiv:2402.15764, 2024.
+
+\bibitem{zheng2023php}
+Chuanyang Zheng et al.
+\textit{Progressive-Hint Prompting Improves Reasoning in Large Language Models}.
+arXiv:2304.09797, 2023.
+
+\bibitem{zhang2023cumulative}
+Yifan Zhang et al.
+\textit{Cumulative Reasoning with Large Language Models}.
+arXiv:2308.04371, 2023.
+
+\bibitem{ye2023satlm}
+Xi Ye et al.
+\textit{SatLM: Satisfiability-Aided Language Models Using Declarative Prompting}.
+NeurIPS 2023. arXiv:2305.09656.
 
 \bibitem{lean4}
 Leonardo de Moura and Sebastian Ullrich.

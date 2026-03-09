@@ -109,3 +109,88 @@ Before camera-ready:
   formatted correctly and that no major 2024–2025 LLM+Lean paper is missing.
 - **Key claim**: make the main takeaway explicit and early — currently it is implicit.
   Suggested: "LSP access to the live compiler matters more than planning alone."
+
+---
+
+## 9. Analysis of `advanced_suggestions.md` — which suggestions are worth pursuing
+
+The AI-generated suggestions in `advanced_suggestions.md` compare our work to the
+prompting-strategies literature. Here is an assessment of each, and a plan for which
+to act on.
+
+### Already done (in the current paper draft)
+
+The following connections have been made explicit in the Related Work section:
+
+- **Milestone planning ≈ Least-to-Most / Plan-and-Solve Prompting**: added citations to
+  Zhou et al. 2022 (arXiv:2205.10625) and Wang et al. 2023 (arXiv:2305.04091).
+- **Specification-first ≈ Problem Elaboration Prompting**: cited Liao et al. 2024
+  (arXiv:2402.15764, "Look Before You Leap").
+- **Self-correction loop ≈ Progressive-Hint Prompting**: cited Zheng et al. 2023
+  (arXiv:2304.09797).
+- **LSP + plan ≈ Proposer-Verifier-Reporter (Cumulative Reasoning)**: cited Zhang et al.
+  2023 (arXiv:2308.04371); also framed this in the Related Work discussion.
+- **Spec-first + external verifier ≈ SatLM**: cited Ye et al. 2023 (arXiv:2305.09656).
+
+### Actionable as new experiments (medium-term)
+
+**Analogical prompting before tactic generation** *(Large Language Models as Analogical
+Reasoners, arXiv:2310.01714; Thought Propagation, arXiv:2310.03965)*
+
+The suggestion: before generating a new tactic, prompt the model to recall a known
+similar Lean tactic (e.g. `ring`, `norm_num`, `decide`) and describe how it works,
+then generate the target tactic by analogy.
+
+**Plan**: Run one new tactic generation session (e.g. one of the 12 draft specs) using
+an analogical prompt prefix. Compare output quality against a non-analogical run.
+If successful, this becomes a fifth condition in the study design.
+Cost: one session, ~1 hour.
+
+**Formal comparison of researcher-written vs. model-generated specifications**
+*(Self-improvement by RL Contemplation, arXiv:2305.14483; bridges Approaches 2 and 3
+in the pilot)*
+
+Currently the pilot shows qualitatively that researcher-written specs (Approach 3)
+outperform model-inferred specs (Approach 2), but this is not systematically evaluated.
+
+**Plan**: For the same tactic (e.g. `decide_list_theory`), generate the spec two ways:
+(a) pipeline `analyze_request` stage (model-generated), (b) researcher-written.
+Then implement under the same condition (D: plan + LSP) and compare the resulting tactics
+on test pass rate, LOC, and number of LSP calls needed. This directly addresses the
+open `\comment{}` on line 115 of the paper about how to evaluate condition differences.
+Cost: one additional session, moderate.
+
+**Better self-correction via explicit error analysis** *(Boosting of Thoughts,
+arXiv:2402.11140; Recursive Decomposition with Dependencies, arXiv:2505.02576)*
+
+The current Condition A/B self-correction loop feeds raw compiler errors back. BoT
+suggests also asking the model to *explain* the error and *revise the strategy*, not
+just the code, before the next attempt.
+
+**Plan**: Modify `pipeline/generator.py`'s repair loop to add an intermediate "error
+analysis" step: after receiving compiler errors, prompt the model to explain what went
+wrong and what strategy change is needed, then generate the repair. Compare repair
+convergence rate against the current loop on the batch of 12 specs.
+Cost: pipeline modification (~2h) + one batch run.
+
+### Low priority / longer-term (not for current submission)
+
+- **Concise and Organized Perception** (arXiv:2310.03309): filter/organize Lean context
+  before prompting. Could help when specs become long. Not urgent given current spec sizes.
+- **Recursive Decomposition for large tactics** (arXiv:2505.02576): relevant if tactics
+  grow beyond ~300 LOC. Not currently needed.
+- **MetaLadder** (arXiv:2503.14891): structured analogical transfer. More complex to
+  implement than basic analogical prompting; defer until the simpler version is tested.
+- **Successive Prompting** (arXiv:2212.04092), **Decomposed Prompting** (arXiv:2210.02406):
+  largely subsumed by Least-to-Most + Plan-and-Solve in what they add to the paper.
+
+### Summary priority order
+
+| Priority | Action | Effort |
+|----------|--------|--------|
+| Now (done) | Cite 5 prompting papers in Related Work | ✓ done |
+| Short-term | Quantitative table (§2 above) | Low |
+| Short-term | Spec comparison experiment (researcher vs model) | Medium |
+| Medium | Analogical prompting experiment | Medium |
+| Medium | Better self-correction loop in pipeline | Medium |
+| Longer-term | Full 2×2 on second tactic | High |
