@@ -10,7 +10,7 @@ propositional logic theorems involving only implication (→), using metaprogram
 
 ## Three Approaches
 
-### Approach 1 — Example-driven iteration (`gpt5_iterations/PropositionalLogic1/`)
+### Approach 1 — Example-driven iteration (`gpt5_iterations/approach1_example_iteration/`)
 
 **Workflow**: Use the Julia code (`formula_enumeration/`) to generate provable
 propositions with 2 implications. Ask ChatGPT to write a tactic (using `run_tac`,
@@ -25,16 +25,16 @@ document the non-convergence. A key failure: the model explained that
 `((P → C) → C) ⇒ C` is not intuitionistically valid in general (true) but failed
 to check whether provability held for the *specific* substitution in the test cases.
 
-### Approach 2 — LLM-generated characterization (`gpt5_iterations/PropositionalLogic2/`, `PropositionalLogic3/`)
+### Approach 2 — LLM-generated characterization (`gpt5_iterations/approach2_model_characterization/`, `approach3_explicit_class_prompt/`)
 
 **Workflow**: Instead of feeding examples directly and asking for a tactic, first ask
 the model to *explain* the examples: what mathematical property do all the Julia-generated
 propositions share? Then ask it to write the tactic guided by that characterization.
 
 **Outcome**: The model inferred a restricted characterization and produced a cleaner
-tactic (one using `whnf + forallE` peeling in PropositionalLogic2, and a recursive
-proof-search approach in PropositionalLogic3). PropositionalLogic2 converges in 3 files;
-PropositionalLogic3 converges in 2. However the inferred characterization was narrower
+tactic (one using `whnf + forallE` peeling in approach2_model_characterization, and a recursive
+proof-search approach in approach3_explicit_class_prompt). approach2_model_characterization converges in 3 files;
+approach3_explicit_class_prompt converges in 2. However the inferred characterization was narrower
 than the true class — the model characterized only the cases it had seen.
 
 ### Approach 3 — Human-written specification (`prove_impl_tautology.lean`, `prove_paren_impl_taut.lean`, `identity_intro.lean`)
@@ -55,9 +55,9 @@ in the `limit_auto` study.
 
 | File | Approach | Description |
 |------|----------|-------------|
-| `gpt5_iterations/PropositionalLogic1/` | 1 | 8 files: example-driven, non-converging |
-| `gpt5_iterations/PropositionalLogic2/` | 2 | 3 files: LLM characterizes from examples, converges |
-| `gpt5_iterations/PropositionalLogic3/` | 2→3 | 2 files: explicit prompt for parenthesized class; converges |
+| `gpt5_iterations/approach1_example_iteration/` | 1 | 8 files: example-driven, non-converging |
+| `gpt5_iterations/approach2_model_characterization/` | 2 | 3 files: LLM characterizes from examples, converges |
+| `gpt5_iterations/approach3_explicit_class_prompt/` | 2→3 | 2 files: explicit prompt for parenthesized class; converges |
 | `prove_impl_tautology.lean` / `.spec.md` | 3 | Human spec: full implication fragment with forward chaining |
 | `prove_paren_impl_taut.lean` / `.spec.md` | 3 | Human spec: parenthesized implication tautologies |
 | `identity_intro.lean` / `.spec.md` | 3 | Human spec: conclusions equal to one hypothesis; simplest correct tactic |

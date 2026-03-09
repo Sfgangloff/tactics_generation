@@ -1,15 +1,40 @@
 # CLAUDE.md
 
-Lean 4 tactic generation pipeline using LLMs.
+Research project: LLM-assisted Lean 4 tactic generation.
+Paper: *Generating Lean 4 Tactics from User Specifications* (ITP short paper).
 
-## Commands
+## Project Layout
+
+```
+paper/              # LaTeX draft (main.tex) and section plan
+experiments/        # All experimental evidence for the paper
+  intuitionistic_pilot/  # Pilot: three approaches to tactic generation
+  limit_auto/            # 2×2 study (main contribution)
+  other_tactics/         # decide_list_theory + 12 draft specs
+pipeline/           # Automated generation pipeline (Python)
+  main.py            # CLI entry point
+  specifications.json
+  generator.py / validator.py / config.py
+  models/ prompts/ legacy/
+```
+
+## Documentation Updates
+
+When modifying the codebase, always keep in sync:
+1. **README.md** — project overview and structure
+2. **paper/main.tex** — paper draft (reflect any design decisions)
+3. **experiments/*/README.md** — experiment-level documentation
+
+## Lean Commands
 
 ```bash
-# Lean
 lake update
 lake build
+```
 
-# Python
+## Pipeline Commands (run from project root)
+
+```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -17,7 +42,7 @@ pip install -r requirements.txt
 python pipeline/main.py "tactic description"
 python pipeline/main.py --provider openrouter --model google/gemini-pro "tactic description"
 
-# Batch mode (from specifications.json)
+# Batch mode
 python pipeline/main.py --batch pipeline/specifications.json
 python pipeline/main.py --batch pipeline/specifications.json --only Tendsto Nonzero
 python pipeline/main.py --batch pipeline/specifications.json --skip RewriteAC --report results.json
@@ -27,53 +52,11 @@ python pipeline/main.py --update output/my_tactic.lean
 python pipeline/main.py --update output/my_tactic.lean --add-tests 10
 ```
 
-## Structure
+## Pipeline Configuration
 
-```
-experiments/        # All experiment data (paper evidence)
-├── intuitionistic_pilot/   # pilot experiment
-│   └── formula_enumeration/ # Julia formula enumeration (pilot background)
-├── limit_auto/             # 2×2 study (main paper contribution)
-└── other_tactics/          # future work
-
-pipeline/           # Python pipeline code + CLI
-├── main.py        # CLI entry point
-├── specifications.json # Tactic descriptions for batch mode
-├── models/        # LLM providers (Anthropic, OpenAI, OpenRouter)
-├── prompts/       # Prompt templates
-├── generator.py   # Orchestrator
-├── validator.py   # Lake compilation
-├── config.py      # Configuration
-└── legacy/        # Earlier pipeline iterations (reference only)
-
-paper/              # Paper draft and plan
-output/            # Generated tactics (gitignored, local only)
-```
-
-## Configuration
-
-- `--provider anthropic|openai|openrouter` - LLM provider
-- `--model NAME` - Specific model (for OpenRouter: e.g., `google/gemini-pro`, `meta-llama/llama-3-70b-instruct`)
-- `--mathlib` - Enable Mathlib imports
-- `--max-rounds N` - Repair attempts
-
-### Batch Mode Options
-
-- `--batch FILE` - Run batch mode with specifications JSON
-- `--only NAME [NAME...]` - Only process these specifications
-- `--skip NAME [NAME...]` - Skip these specifications
-- `--report FILE` - Write JSON report
-
-### Update Mode Options
-
-- `--update FILE` - Update an existing tactic file
-- `--add-tests N` - Number of new tests to add (default: 5)
-
-## Documentation Updates
-
-**Important**: When modifying the codebase (adding features, changing behavior, etc.), always update:
-
-1. **README.md** - Update usage examples, project structure, and pipeline flow as relevant
-2. **paper/main.tex** - Update the paper to reflect architectural changes, new features, or design decisions
-
-This ensures documentation stays synchronized with the implementation.
+- `--provider anthropic|openai|openrouter`
+- `--model NAME` (e.g. `google/gemini-pro`, `meta-llama/llama-3-70b-instruct`)
+- `--mathlib` — enable Mathlib imports
+- `--max-rounds N` — repair attempts
+- `--batch FILE` / `--only` / `--skip` / `--report FILE`
+- `--update FILE` / `--add-tests N`
