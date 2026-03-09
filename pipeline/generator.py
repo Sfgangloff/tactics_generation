@@ -98,6 +98,7 @@ class TacticGenerator:
         self.test_algorithm_prompt = (prompts_dir / "generate_test_algorithm.txt").read_text()
         self.generate_tests_prompt = (prompts_dir / "generate_tests.txt").read_text()
         self.fix_prompt = (prompts_dir / "fix_errors.txt").read_text()
+        self.analyze_errors_prompt = (prompts_dir / "analyze_errors.txt").read_text()
         self.split_prompt = (prompts_dir / "split_specifications.txt").read_text()
         self.additional_tests_prompt = (prompts_dir / "generate_additional_tests.txt").read_text()
         self.update_tactic_prompt = (prompts_dir / "update_tactic.txt").read_text()
@@ -324,10 +325,23 @@ Do not import Mathlib modules.
                 temp_path.unlink()
 
     def _repair_code(self, code: str, validation: ValidationResult) -> str:
-        """Attempt to repair code based on compilation errors."""
-        # Use replace instead of format to handle curly braces in code
+        """Attempt to repair code based on compilation errors.
+
+        Uses a two-step approach inspired by Boosting of Thoughts (Chen et al. 2024):
+        first ask the model to diagnose root causes and identify a strategy change,
+        then generate the actual repair guided by that diagnosis.
+        """
+        errors = validation.format_diagnostics()
+
+        # Step 1: error diagnosis
+        diagnosis_prompt = self.analyze_errors_prompt.replace("{code}", code)
+        diagnosis_prompt = diagnosis_prompt.replace("{errors}", errors)
+        diagnosis = self.model.generate(diagnosis_prompt)
+
+        # Step 2: repair guided by the diagnosis
         prompt = self.fix_prompt.replace("{code}", code)
-        prompt = prompt.replace("{errors}", validation.format_diagnostics())
+        prompt = prompt.replace("{errors}", errors)
+        prompt += f"\n\n## Error Diagnosis (use this to guide your fix):\n{diagnosis}"
         response = self.model.generate(prompt)
         return self._clean_code(response)
 

@@ -1,0 +1,17 @@
+You are an expert Lean 4 developer. Analyze the compilation errors below and produce a concise diagnosis before any code is written.
+
+## Code with errors:
+```lean
+{code}
+```
+
+## Compilation Errors:
+{errors}
+
+## Your task:
+Produce a short diagnosis (5–10 lines) that answers:
+1. What is the root cause of each error? (not just restating it — explain *why* it occurs)
+2. What strategy change is needed? (e.g. "use a different lemma", "change the pattern match", "the approach to X is fundamentally wrong because...")
+3. Are there any errors that are consequences of a single upstream mistake? If so, identify the upstream mistake.
+
+Do NOT write any Lean code yet. Only write the diagnosis.

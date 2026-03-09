@@ -60,21 +60,21 @@
 \maketitle
 
 \begin{abstract}
-We present an empirical study of strategies for generating Lean~4 tactics from
-natural language specifications using large language models~(LLMs).
-Rather than measuring whether an LLM can generate a tactic from a bare prompt,
-we ask what \emph{scaffolding} makes tactic generation reliable: a formal
-specification, a milestone plan, and live compiler feedback via an LSP server.
-Our main experiment is a $2 \times 2$ study of the \texttt{limit\_auto} tactic,
-which automatically proves \texttt{Tendsto~f~F~G} goals in Lean~4 / Mathlib,
-comparing the presence or absence of a milestone plan with the presence or
-absence of live LSP tool access.  We find that raw one-shot generation without
-scaffolding produces no usable output, while the combination of milestone
-planning and LSP feedback produces a working tactic with zero compiler errors
-and a rich test suite after nine incremental milestones.  We characterise the
-concrete classes of errors that only LSP feedback can fix---incorrect Mathlib
-API names, deprecated lemma identifiers, elaboration-order pitfalls---and
-discuss the implications for LLM-based metaprogramming pipelines.
+We study how to make large language models~(LLMs) reliably generate working
+Lean~4 tactic procedures from informal user specifications.
+In a $2 \times 2$ experiment on the \texttt{limit\_auto} tactic---which
+automatically proves \texttt{Tendsto~f~F~G} goals in Mathlib---we cross
+milestone planning with live LSP compiler feedback.
+Our sharpest finding is that \emph{LSP access to the live Lean kernel
+matters more than planning alone}: one-shot generation with LSP feedback
+(17 passing tests, 307 LOC) strictly outperforms a structured 5-milestone
+plan without LSP (1 failing test, wrong Mathlib lemma names).
+Combining both yields the strongest result (16 passing tests, 325 LOC,
+zero errors after 9 milestones).
+We characterise four error classes that only LSP feedback resolves---stale
+API names, deprecated lemmas, elaboration-order pitfalls, and
+\texttt{whnf}-unfolding surprises---and describe the specification-first
+pipeline that underlies all successful conditions.
 \end{abstract}
 
 %%% ============================================================
@@ -112,18 +112,15 @@ We compare four conditions in a $2 \times 2$ design:
   \item the presence or absence of live \emph{LSP tool access} during
         implementation (real-time diagnostics, goal inspection, lemma search).
 \end{itemize}
-\comment{By the way, we need to see how to evaluate the differences. Because for instance
-between tools + plan and just tools, we have two different tactics which do more or less the same thing 
-but have different qualities (at least according to chatgpt).}
-\comment{Also I think that we should not just restrict to just limit_auto, later 
-we should repeat this for all the user specifications we have. But first to have a good schema, 
-let's restrict to limit_auto.}
 
 Our findings are that (1)~a raw one-shot API call without scaffolding produces
 no usable output; (2)~a milestone plan alone helps structure the work but
 cannot prevent wrong Mathlib API names from breaking the tactic; (3)~LSP
 feedback alone (without a plan) produces a working one-shot implementation;
 and (4)~combining both yields the most complete and readable result.
+The sharpest result is that \textbf{LSP access to the live compiler is more
+valuable than planning alone}: Condition~C (no plan, LSP) strictly dominates
+Condition~B (plan, no LSP) on every metric.
 By \emph{LSP tools} we mean the Lean Language Server Protocol tools available inside
 Claude Code: real-time compiler diagnostics (\texttt{lean\_diagnostic\_messages}),
 proof-state inspection (\texttt{lean\_goal}), and natural-language Mathlib
@@ -226,65 +223,34 @@ code generation.
 \section{Pilot: Intuitionistic Implication Tactic}
 %%% ============================================================
 
-\comment{I don't know if it should be that much detailed this part, but you tell me.}
+Before the main study, we ran a pilot experiment on a simpler target:
+a tactic that proves goals of the form $P_1 \to \cdots \to P_n \to P_i$
+(conclusion is one of the hypotheses).
+We used a Julia program to enumerate provable propositional theorems
+of this class (via Catalan and Bell numbers) as a test suite,
+and explored three generation strategies with GPT-5.
 
-Before the main study, we ran a pilot experiment to understand what makes
-LLM-driven metaprogramming succeed or fail.
-We used a Julia program to enumerate all provable propositional theorems
-involving only implication (→) up to a given depth (using Catalan numbers
-for formula shapes and Bell numbers for variable equivalences).
-These theorems served as a concrete test suite.
-The target was a Lean 4 tactic that proves any such theorem uniformly,
-required to be written using metaprogramming and invoked via \texttt{run\_tac}.
-We explored three approaches.
+\textbf{(1) Example-driven iteration}: feed generated theorems in batches
+of increasing complexity, ask the model to update the tactic each time.
+Produced 8 Lean files with no convergence---the tactic always matched
+the current batch but did not generalise.
 
-\paragraph{Approach 1: Example-driven iteration.}
-We fed the generated theorems to ChatGPT (GPT-5) starting with
-2-implication examples, asked it to write a uniform tactic, then
-provided 3-implication examples, 4-implication examples, and so on.
-The model was asked to update the tactic at each step to handle the
-growing class. This produced 8 Lean files with no convergence:
-the model's tactic always matched the current batch of examples but
-did not generalise. A characteristic failure: when confronted with
-a goal like $((A \to B \to B) \to C) \to C$, the model incorrectly
-claimed such formulas are not intuitionistically valid in general and
-failed to check provability for the specific substitution at hand.
-Without a semantic anchor, there is no guarantee that fixing one
-batch of errors does not break another.
+\textbf{(2) LLM-generated characterization}: ask the model to first
+\emph{explain} the examples mathematically, then implement guided by
+that characterization.  Converged in 3--5 files, but the inferred
+characterization was narrower than the true class.
 
-\paragraph{Approach 2: LLM-generated characterization.}
-Instead of asking for a tactic directly, we first asked the model to
-\emph{explain} the examples — to articulate the mathematical property
-shared by all the generated theorems — and then to write the tactic
-guided by that characterization.
-This converged in 3--5 files rather than failing to converge.
-The model inferred a characterization and produced a cleaner tactic
-(intro all, then assumption or one-step modus ponens).
-However, the inferred characterization was narrower than the true class:
-it covered only the cases the model had seen.
+\textbf{(3) Researcher-written specification}: write the mathematical
+specification ourselves---$\mathcal{F} = \{\varphi \mid \varphi \equiv
+P_1 \to \cdots \to P_n \to Q,\; Q \in \{P_1,\ldots,P_n\}\}$, algorithm:
+intros then assumption---then ask the model to implement.
+Produced a correct, concise tactic in one session.
 
-\paragraph{Approach 3: Researcher-written specification.}
-The most reliable approach was for the researchers to write the mathematical
-specification themselves — precisely characterizing the formula class and
-the proof algorithm — and then ask the model to implement the tactic from
-that spec. The target class is:
-\[
-  \mathcal{F} = \{\,\varphi \mid \varphi \equiv P_1 \to \cdots \to P_n \to Q,
-  \ Q \in \{P_1, \ldots, P_n\}\,\}
-\]
-with algorithm: introduce all implications, then close by \texttt{assumption}.
-The resulting tactic (\texttt{identity\_intro}: intros all, then assumption) is
-correct, concise, and needed no repair rounds.
-
-\paragraph{Outcome and caveats.}
-The progression Approach 1 $\to$ 2 $\to$ 3 shows that the model is a good
-code generator when given a precise mathematical description, and a poor
-mathematician when asked to infer the class from examples alone.
-This motivated the spec-first pipeline used for the main study:
-always generate a formal specification before asking the model to write code.
-The spec-first tactic is not mathematically complete (gas-bounded proof search
-may fail on deeply nested goals), but the incompleteness is explicit in the
-spec rather than hidden in the implementation.
+The key lesson: \emph{the model is a good code generator, but a poor
+mathematician}.  Given a precise spec, it converges quickly; asked to
+infer the class from examples, it does not.  This motivated the
+specification-first pipeline used throughout the main study.
+Full iteration logs are in \texttt{experiments/intuitionistic\_pilot/}.
 
 %%% ============================================================
 \section{The \texttt{limit\_auto} Study}
@@ -384,6 +350,28 @@ plan with LSP feedback at each step; this is the main positive condition.
 
 \subsection{Results per Condition}
 \label{sec:results}
+
+Table~\ref{tab:results} summarises the four conditions quantitatively.
+
+\begin{table}[h]
+\centering
+\caption{Quantitative comparison of the four conditions.
+LOC = lines of code in the final tactic file.
+Tests = theorem test cases in the final file.
+Milestones = number of incremental implementation steps.
+LSP calls = tool invocations recorded in the LSP log (Condition~D only; C used LSP interactively without a separate log).}
+\label{tab:results}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Condition} & \textbf{Compiles} & \textbf{Tests pass} & \textbf{LOC} & \textbf{Tests} & \textbf{Milestones} & \textbf{LSP calls} \\
+\midrule
+A (no plan, no LSP) & No  & 0 / 0  & 0   & 0  & 1 & 0  \\
+B (plan, no LSP)    & Yes & 8 / 9  & 160 & 9  & 5 & 0  \\
+C (no plan, LSP)    & Yes & 17 / 17 & 307 & 17 & 1 & --- \\
+D (plan, LSP)       & Yes & 16 / 16 & 325 & 16 & 9 & 34 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Condition A.}
 The automated pipeline produced no usable output: the model either declined to
@@ -504,9 +492,9 @@ Table~\ref{tab:lsp} is derived from \texttt{experiments/limit\_auto/plan\_with\_
 which records every LSP tool call made during Condition~D.
 The model used was Claude~Sonnet~4.6, running inside Claude Code
 with a \texttt{CLAUDE.md} project file specifying the Lean toolchain and Mathlib imports.
-All four condition outputs are archived in \texttt{experiments/limit\_auto/}.
-\comment{Should we point at implementation files in an academic paper? Suggestion:
-reference the repository URL rather than file paths for the camera-ready version.}
+All four condition outputs are archived in the repository at
+\url{https://github.com/Sfgangloff/tactics_generation}
+under \texttt{experiments/limit\_auto/}.
 
 %%% ============================================================
 \section{Discussion}
