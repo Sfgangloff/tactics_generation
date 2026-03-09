@@ -1,153 +1,149 @@
-# Tactics Generation
+# Lean 4 Tactic Generation — Empirical Study
 
-A pipeline for generating Lean 4 tactics from informal natural language descriptions using LLMs.
+This repository accompanies the paper:
 
-## Prerequisites
+> **Generating Lean 4 Tactics from User Specifications: An Empirical Study of LLM-Assisted Metaprogramming Strategies**
 
-- Lean 4 with Lake ([installation guide](https://leanprover.github.io/lean4/doc/setup.html))
-- Python 3.10+
-- API key for Anthropic, OpenAI, or OpenRouter
+We study whether large language models can generate working Lean 4 tactics from
+informal user specifications, and which scaffolding strategies — formal specifications,
+milestone plans, live LSP feedback — make generation reliable.
 
-## Setup
+---
+
+## Navigating the Repository
+
+### I want to read the paper or study plan
+
+```
+paper/
+  main.tex          ← LaTeX draft
+  paper_plan.md     ← section outline, evidence table, key claims
+```
+
+### I want to understand the experiments
+
+```
+experiments/
+  intuitionistic_pilot/     ← Section 3: pilot experiment (propositional logic tactic)
+  limit_auto/               ← Section 4: main 2×2 study
+  other_tactics/            ← Section 7: future work (decide_list_theory + 12 specs)
+```
+
+See [`REPO_MAP.md`](REPO_MAP.md) for a full annotated file listing.
+
+### I want to run the pipeline
 
 ```bash
-# Setup Lean project
-lake update
-lake build
-
-# Setup Python environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Setup
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+export ANTHROPIC_API_KEY="your-key"   # or OPENAI_API_KEY, OPENROUTER_API_KEY
 
-# Set API key via environment variable (choose one)
-export ANTHROPIC_API_KEY="your-key-here"
-export OPENAI_API_KEY="your-key-here"
-export OPENROUTER_API_KEY="your-key-here"
+# Generate a tactic from a description
+python main.py "Create a tactic that proves Tendsto goals by continuity"
 
-# Or put your key in a file (auto-ignored by git)
-echo "your-key-here" > anthropic_key.txt
-echo "your-key-here" > openai_key.txt
-echo "your-key-here" > openrouter_key.txt
-```
+# With Mathlib, explicit model
+python main.py --mathlib --provider anthropic "..."
+python main.py --provider openrouter --model google/gemini-pro "..."
 
-## Usage
-
-### Single Tactic Generation
-
-```bash
-# Basic usage (Anthropic by default)
-python main.py "Create a tactic that simplifies boolean expressions"
-
-# Use OpenAI
-python main.py --provider openai "Create a tactic that applies symmetry"
-
-# Use OpenRouter (access to many models)
-python main.py --provider openrouter --model google/gemini-pro "Create a tactic"
-python main.py --provider openrouter --model meta-llama/llama-3-70b-instruct "Create a tactic"
-
-# Enable Mathlib imports
-python main.py --mathlib "Create a tactic for finding limits"
-
-# Read request from file
-python main.py -f request.txt
-
-# More options
-python main.py --help
-```
-
-### Batch Mode
-
-Process multiple specifications from a JSON file. Specifications that describe multiple tactics are automatically split into individual tactic generations.
-
-```bash
-# Process all specifications
+# Batch mode (from specifications.json)
 python main.py --batch specifications.json --mathlib
 
-# Process specific specifications only
-python main.py --batch specifications.json --only Tendsto Nonzero
-
-# Skip certain specifications
-python main.py --batch specifications.json --skip RewriteAC
-
-# Generate a JSON report
-python main.py --batch specifications.json --report results.json
+# Add tests to an existing tactic
+python main.py --update output/my_tactic.lean --add-tests 10
 ```
 
-The `specifications.json` file format:
-```json
-{
-  "TacticName": {
-    "description": "Informal description of the tactic..."
-  }
-}
+See [`pipeline/README.md`](pipeline/README.md) for architecture details.
+
+---
+
+## Repository Structure
+
+```
+.
+├── README.md               ← this file
+├── REPO_MAP.md             ← annotated map: what is paper-relevant and what is not
+├── CLAUDE.md               ← project instructions for Claude Code
+│
+├── paper/
+│   ├── main.tex            ← paper draft (LaTeX, ITP short paper)
+│   └── paper_plan.md       ← section outline and evidence table
+│
+├── experiments/
+│   ├── intuitionistic_pilot/
+│   │   ├── README.md
+│   │   ├── *.lean / *.spec.md   ← spec-first tactic versions (pilot outcome)
+│   │   └── gpt5_iterations/     ← 13 GPT-5 iterations (iterative approach)
+│   │
+│   ├── limit_auto/              ← 2×2 study (main paper contribution)
+│   │   ├── spec.md              ← shared specification for all 4 conditions
+│   │   ├── README.md            ← study design and condition descriptions
+│   │   ├── one_run/             ← Condition A: no plan, no LSP (baseline)
+│   │   ├── plan_without_lsp/    ← Condition B: plan, no LSP (5 milestones)
+│   │   ├── one_shot_with_lsp/   ← Condition C: no plan, with LSP
+│   │   └── plan_with_lsp/       ← Condition D: plan + LSP (9 milestones, best)
+│   │       └── lsp_log.md       ← full record of LSP tool calls
+│   │
+│   └── other_tactics/
+│       ├── README.md
+│       ├── decide_list_theory/  ← second complete tactic (LSP-guided)
+│       └── specs/               ← 12 drafted specifications (future work)
+│
+├── pipeline/
+│   ├── README.md
+│   ├── config.py           ← configuration (provider, model, flags)
+│   ├── generator.py        ← pipeline orchestrator
+│   ├── validator.py        ← Lake compilation wrapper
+│   ├── models/             ← LLM provider wrappers (Anthropic, OpenAI, OpenRouter)
+│   ├── prompts/            ← prompt templates (analyze, generate, test, fix, ...)
+│   └── legacy/             ← earlier approaches (see pipeline/legacy/README.md)
+│
+├── propfmls/               ← Julia code: propositional formula enumeration (pilot background)
+│
+├── main.py                 ← CLI entry point
+├── specifications.json     ← tactic descriptions for batch mode
+├── requirements.txt        ← Python dependencies (anthropic, openai)
+│
+├── lakefile.toml           ← Lean 4 project configuration (Mathlib dependency)
+├── lean-toolchain          ← pinned Lean version
+└── Main.lean               ← minimal Lean entry point (required by Lake)
 ```
 
-When a specification describes multiple distinct tactics (e.g., "compute equality, coefficient, and leading term for polynomials"), the pipeline automatically splits it into separate tactic generations.
+---
 
-### Update Mode
+## The 2×2 Study Design
 
-Incrementally improve an existing tactic by adding new test cases and updating the implementation to handle them.
+The central experiment studies four strategies for generating the `limit_auto` tactic
+(which proves `Tendsto f F G` goals in Lean 4 / Mathlib):
+
+|                    | No milestone plan        | With milestone plan      |
+|--------------------|--------------------------|--------------------------|
+| **No LSP tools**   | A: raw one-shot (empty)  | B: plan, no LSP          |
+| **With LSP tools** | C: one-shot + LSP        | D: plan + LSP (best)     |
+
+- **Condition A**: single API call, self-correction loop → produces nothing usable
+- **Condition B**: structured plan, API calls with self-correction → compiles, tests fail (wrong Mathlib API names)
+- **Condition C**: one-shot in Claude Code with live LSP → zero errors, all tests pass
+- **Condition D**: 9-milestone plan with live LSP at each step → zero errors, richest test suite
+
+**Key finding**: LSP access to the live Lean compiler is more valuable than planning alone
+(C dominates B). Combined, they give the best result (D).
+
+---
+
+## Lean Setup
 
 ```bash
-# Add 5 new tests to an existing tactic (default)
-python main.py --update output/my_tactic.lean
-
-# Add a specific number of tests
-python main.py --update output/my_tactic.lean --add-tests 10
-
-# With increased repair rounds for complex updates
-python main.py --update output/my_tactic.lean --add-tests 10 --max-rounds 6
+# Install Lean toolchain (see https://leanprover.github.io/lean4/doc/setup.html)
+lake update
+lake build
 ```
 
-Requirements for update mode:
-- The `.lean` file must exist
-- A corresponding `.spec.md` file must exist (created during initial generation)
+The project requires Mathlib (pinned via `lake-manifest.json`). Build time for Mathlib
+is ~30 minutes on first run; subsequent builds are cached.
 
-The update pipeline:
-1. Parses the existing specification and test algorithm
-2. Generates new non-duplicate tests following the same algorithm
-3. Appends tests to the file
-4. Updates the tactic implementation if needed (via repair loop)
+---
 
-## Project Structure
+## Citing
 
-```
-tactics_generation/
-├── pipeline/              # Python pipeline
-│   ├── models/           # LLM provider abstraction
-│   ├── prompts/          # Prompt templates
-│   ├── generator.py      # Main orchestrator
-│   ├── validator.py      # Lean compilation
-│   └── config.py         # Configuration
-├── output/               # Generated tactics
-├── main.py               # CLI entry point
-├── batch_run.py          # Standalone batch runner
-├── specifications.json   # User specifications for batch mode
-├── lakefile.toml         # Lean project config
-└── requirements.txt      # Python dependencies
-```
-
-## Pipeline Flow
-
-### Single Tactic Mode
-1. **Analyze**: Parse informal request into structured specification
-2. **Test Algorithm**: Generate systematic test generation strategy
-3. **Generate Tactic**: Create Lean 4 metaprogramming code
-4. **Generate Tests**: Create test theorems using the algorithm
-5. **Validate**: Compile with Lake
-6. **Repair**: If errors, feed back to LLM (up to N rounds)
-7. **Output**: Save validated tactic and specification
-
-### Batch Mode
-1. **Load**: Read specifications from JSON file
-2. **Split**: For each specification, identify if it describes multiple tactics
-3. **Generate**: For each individual tactic specification, run the single tactic pipeline
-4. **Report**: Aggregate results and optionally write JSON report
-
-### Update Mode
-1. **Load**: Read existing tactic and specification files
-2. **Generate Additional Tests**: Create new non-duplicate tests using the original algorithm
-3. **Append**: Add new tests to the file
-4. **Validate & Repair**: Update tactic implementation if tests fail
-5. **Save**: Write updated file
+> [paper citation placeholder — fill in after submission]

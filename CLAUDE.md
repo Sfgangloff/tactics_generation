@@ -30,17 +30,25 @@ python main.py --update output/my_tactic.lean --add-tests 10
 ## Structure
 
 ```
-pipeline/           # Python code
-├── models/        # LLM providers (Anthropic, OpenAI)
+experiments/        # All experiment data (paper evidence)
+├── intuitionistic_pilot/   # pilot experiment
+├── limit_auto/             # 2×2 study (main paper contribution)
+└── other_tactics/          # future work
+
+pipeline/           # Python pipeline code
+├── models/        # LLM providers (Anthropic, OpenAI, OpenRouter)
 ├── prompts/       # Prompt templates
 ├── generator.py   # Orchestrator
 ├── validator.py   # Lake compilation
-└── config.py      # Configuration
+├── config.py      # Configuration
+└── legacy/        # Earlier pipeline iterations (reference only)
+
+paper/              # Paper draft and plan
+propfmls/           # Julia formula enumeration (pilot background)
 
 main.py            # CLI entry point
-batch_run.py       # Standalone batch runner
 specifications.json # User specifications for batch mode
-output/            # Generated tactics
+output/            # Generated tactics (gitignored, local only)
 ```
 
 ## Configuration

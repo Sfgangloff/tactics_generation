@@ -1,7 +1,3 @@
-> **User Request:** Tactic that decides polynomial equality by normalizing polynomial expressions and comparing their canonical forms. Can prove or disprove goals of the form `p = q` where `p` and `q` are polynomial expressions.
-
----
-
 # Tactic Specification: poly_norm
 
 ## Analysis
