@@ -111,16 +111,12 @@ For `n` implications:
 - `provable_count_test.jl`, `provable_count_test2.jl`, `provable_count_test3.jl`: Tests provability analysis
 - `provable_count_ori.jl`: Original/reference implementation
 
-## Integration with Tactic Generation
+## Integration with the Pilot Experiment
 
-Generated theorems serve as training/test data for the automated theorem proving pipeline:
-
-1. **Generate theorems:** `julia provable_generate.jl 3 > propositions_3.lean`
-2. **Move to Lean project:** Copy output to `TacticsGeneration/Tactics/`
-3. **Run tactic generation:** Apply LLM-based proof search to replace `sorry` with actual tactics
-4. **Validate:** Use `scripts/fix_lean.py` to verify proofs compile
-
-The theorems are guaranteed to be provable, allowing evaluation of tactic generation success rate and proof complexity.
+These generated theorems were used as the test suite for the intuitionistic implication tactic
+developed in `experiments/intuitionistic_pilot/`. Generated formulas of the form
+`P₁ → P₂ → … → Pₙ → Pᵢ` served as benchmark instances for evaluating whether the tactic
+correctly proves goals where the conclusion is one of the hypotheses.
 
 ## Dependencies
 
@@ -133,16 +129,19 @@ The theorems are guaranteed to be provable, allowing evaluation of tactic genera
 ## Running the Generator
 
 ```bash
+# From the project root
+cd experiments/intuitionistic_pilot/formula_enumeration
+
 # Generate theorems with 3 implications
-julia propfmls/provable_generate.jl 3
+julia provable_generate.jl 3
 
 # Generate and save to file
-julia propfmls/provable_generate.jl 4 > TacticsGeneration/Tactics/propositions_4.lean
+julia provable_generate.jl 4 > propositions_4.lean
 
 # Run tests
-julia propfmls/equivalences_test.jl
-julia propfmls/fml_shape_test.jl
-julia propfmls/provable_count_test.jl
+julia equivalences_test.jl
+julia fml_shape_test.jl
+julia provable_count_test.jl
 ```
 
 ## Limitations and Future Work
@@ -168,5 +167,5 @@ julia propfmls/provable_count_test.jl
 ---
 
 **Related files in project:**
-- `TacticsGeneration/Tactics/propositions_*.lean`: Generated theorem files
-- `CLAUDE.md`: Overall project documentation
+- `experiments/intuitionistic_pilot/gpt5_iterations/`: GPT-5 tactic development sessions
+- `experiments/intuitionistic_pilot/*.lean`: Final tactic implementations

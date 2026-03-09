@@ -29,8 +29,6 @@ experiments/
   other_tactics/            ← Section 7: future work (decide_list_theory + 12 specs)
 ```
 
-See [`REPO_MAP.md`](REPO_MAP.md) for a full annotated file listing.
-
 ### I want to run the pipeline
 
 ```bash
@@ -40,17 +38,17 @@ pip install -r requirements.txt
 export ANTHROPIC_API_KEY="your-key"   # or OPENAI_API_KEY, OPENROUTER_API_KEY
 
 # Generate a tactic from a description
-python main.py "Create a tactic that proves Tendsto goals by continuity"
+python pipeline/main.py "Create a tactic that proves Tendsto goals by continuity"
 
 # With Mathlib, explicit model
-python main.py --mathlib --provider anthropic "..."
-python main.py --provider openrouter --model google/gemini-pro "..."
+python pipeline/main.py --mathlib --provider anthropic "..."
+python pipeline/main.py --provider openrouter --model google/gemini-pro "..."
 
 # Batch mode (from specifications.json)
-python main.py --batch specifications.json --mathlib
+python pipeline/main.py --batch pipeline/specifications.json --mathlib
 
 # Add tests to an existing tactic
-python main.py --update output/my_tactic.lean --add-tests 10
+python pipeline/main.py --update output/my_tactic.lean --add-tests 10
 ```
 
 See [`pipeline/README.md`](pipeline/README.md) for architecture details.
@@ -62,7 +60,6 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 ```
 .
 ├── README.md               ← this file
-├── REPO_MAP.md             ← annotated map: what is paper-relevant and what is not
 ├── CLAUDE.md               ← project instructions for Claude Code
 │
 ├── paper/
@@ -72,8 +69,9 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 ├── experiments/
 │   ├── intuitionistic_pilot/
 │   │   ├── README.md
-│   │   ├── *.lean / *.spec.md   ← spec-first tactic versions (pilot outcome)
-│   │   └── gpt5_iterations/     ← 13 GPT-5 iterations (iterative approach)
+│   │   ├── *.lean / *.spec.md        ← spec-first tactic versions (pilot outcome)
+│   │   ├── gpt5_iterations/          ← 13 GPT-5 iterations (iterative approach)
+│   │   └── formula_enumeration/      ← Julia: propositional formula enumeration (background)
 │   │
 │   ├── limit_auto/              ← 2×2 study (main paper contribution)
 │   │   ├── spec.md              ← shared specification for all 4 conditions
@@ -91,6 +89,8 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 │
 ├── pipeline/
 │   ├── README.md
+│   ├── main.py             ← CLI entry point
+│   ├── specifications.json ← tactic descriptions for batch mode
 │   ├── config.py           ← configuration (provider, model, flags)
 │   ├── generator.py        ← pipeline orchestrator
 │   ├── validator.py        ← Lake compilation wrapper
@@ -98,12 +98,7 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 │   ├── prompts/            ← prompt templates (analyze, generate, test, fix, ...)
 │   └── legacy/             ← earlier approaches (see pipeline/legacy/README.md)
 │
-├── propfmls/               ← Julia code: propositional formula enumeration (pilot background)
-│
-├── main.py                 ← CLI entry point
-├── specifications.json     ← tactic descriptions for batch mode
 ├── requirements.txt        ← Python dependencies (anthropic, openai)
-│
 ├── lakefile.toml           ← Lean 4 project configuration (Mathlib dependency)
 ├── lean-toolchain          ← pinned Lean version
 └── Main.lean               ← minimal Lean entry point (required by Lake)

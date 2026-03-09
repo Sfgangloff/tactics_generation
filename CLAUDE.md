@@ -14,17 +14,17 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # Single tactic
-python main.py "tactic description"
-python main.py --provider openrouter --model google/gemini-pro "tactic description"
+python pipeline/main.py "tactic description"
+python pipeline/main.py --provider openrouter --model google/gemini-pro "tactic description"
 
 # Batch mode (from specifications.json)
-python main.py --batch specifications.json
-python main.py --batch specifications.json --only Tendsto Nonzero
-python main.py --batch specifications.json --skip RewriteAC --report results.json
+python pipeline/main.py --batch pipeline/specifications.json
+python pipeline/main.py --batch pipeline/specifications.json --only Tendsto Nonzero
+python pipeline/main.py --batch pipeline/specifications.json --skip RewriteAC --report results.json
 
 # Update mode (add tests to existing tactic)
-python main.py --update output/my_tactic.lean
-python main.py --update output/my_tactic.lean --add-tests 10
+python pipeline/main.py --update output/my_tactic.lean
+python pipeline/main.py --update output/my_tactic.lean --add-tests 10
 ```
 
 ## Structure
@@ -32,10 +32,13 @@ python main.py --update output/my_tactic.lean --add-tests 10
 ```
 experiments/        # All experiment data (paper evidence)
 ├── intuitionistic_pilot/   # pilot experiment
+│   └── formula_enumeration/ # Julia formula enumeration (pilot background)
 ├── limit_auto/             # 2×2 study (main paper contribution)
 └── other_tactics/          # future work
 
-pipeline/           # Python pipeline code
+pipeline/           # Python pipeline code + CLI
+├── main.py        # CLI entry point
+├── specifications.json # Tactic descriptions for batch mode
 ├── models/        # LLM providers (Anthropic, OpenAI, OpenRouter)
 ├── prompts/       # Prompt templates
 ├── generator.py   # Orchestrator
@@ -44,10 +47,6 @@ pipeline/           # Python pipeline code
 └── legacy/        # Earlier pipeline iterations (reference only)
 
 paper/              # Paper draft and plan
-propfmls/           # Julia formula enumeration (pilot background)
-
-main.py            # CLI entry point
-specifications.json # User specifications for batch mode
 output/            # Generated tactics (gitignored, local only)
 ```
 

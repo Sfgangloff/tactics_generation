@@ -5,6 +5,11 @@ import argparse
 import sys
 from pathlib import Path
 
+# Ensure project root is on sys.path so 'pipeline' is importable as a package
+_project_root = Path(__file__).parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 from pipeline import TacticGenerator, Config
 
 
@@ -14,13 +19,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py "Create a tactic that simplifies boolean expressions"
-  python main.py --provider openai --mathlib "Create a tactic for finding limits"
-  python main.py --provider openrouter --model google/gemini-pro "Create a tactic"
-  python main.py -f request.txt --output my_tactic.lean
-  python main.py --batch specifications.json
-  python main.py --batch specifications.json --only Tendsto Nonzero
-  python main.py --update output/my_tactic.lean --add-tests 5
+  python pipeline/main.py "Create a tactic that simplifies boolean expressions"
+  python pipeline/main.py --provider openai --mathlib "Create a tactic for finding limits"
+  python pipeline/main.py --provider openrouter --model google/gemini-pro "Create a tactic"
+  python pipeline/main.py -f request.txt --output my_tactic.lean
+  python pipeline/main.py --batch pipeline/specifications.json
+  python pipeline/main.py --batch pipeline/specifications.json --only Tendsto Nonzero
+  python pipeline/main.py --update output/my_tactic.lean --add-tests 5
         """,
     )
 
