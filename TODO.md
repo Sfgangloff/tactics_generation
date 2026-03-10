@@ -11,7 +11,7 @@ Items marked **[DONE]** are complete; see `reports/` for details.
 - [x] **T02** — Resolve `\comment{}` on file paths → replace with repo URL placeholder ✓ `reports/report_002.md`
 - [x] **T03** — Condense pilot section to ~1 page for ITP short paper ✓ `reports/report_003.md`
 - [x] **T04** — Writing polish: tighten abstract, sharpen key claim in intro ✓ `reports/report_004.md`
-- [ ] **T05** — Switch LaTeX class to LNCS (`llncs`) for ITP formatting **[USER: add author names/affiliations]**
+- [x] **T05** — Switch LaTeX class to LNCS (`llncs`) for ITP formatting ✓ `reports/report_006.md`
 - [ ] **T06 [USER]** — Decide whether to run Condition A interactively (Claude Code, no plan, no LSP) to disambiguate failure cause
 - [ ] **T07 [USER]** — Run full 2×2 study on `decide_list_theory` (have spec + plan already)
 - [ ] **T08 [USER]** — Spec comparison experiment: researcher-written vs model-generated spec on same tactic
@@ -24,7 +24,7 @@ Items marked **[DONE]** are complete; see `reports/` for details.
 
 ## Repository / infrastructure
 
-- [ ] **T12 [USER]** — Add `CITATION.cff` once author list is finalized
+- [x] **T12** — Add `CITATION.cff` ✓ `reports/report_006.md`
 - [ ] **T13** — Verify `lake build` passes cleanly on CI (check GitHub Actions)
 
 ---

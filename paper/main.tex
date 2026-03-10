@@ -1,21 +1,15 @@
-\documentclass[a4paper,11pt]{article}
+\documentclass{llncs}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{amsmath,amssymb,amsthm}
+\usepackage{amsmath,amssymb}
 \usepackage{hyperref}
 \usepackage{listings}
 \usepackage{xcolor}
-\usepackage{geometry}
 \usepackage{booktabs}
 \usepackage{microtype}
-\usepackage[colorinlistoftodos]{todonotes}
-
-\geometry{margin=1in, marginparwidth=2.8cm}
-
-% \comment{...} renders as a colored margin note during drafting.
-% To hide all comments for submission: \renewcommand{\comment}[1]{}
-\newcommand{\comment}[1]{\todo[color=yellow!40,size=\scriptsize]{#1}}
+% Comment macro — remove the \renewcommand line before submission
+\newcommand{\comment}[1]{}
 
 % Lean code styling
 \lstdefinelanguage{Lean}{
@@ -49,11 +43,17 @@
 \title{Generating Lean~4 Tactics from User Specifications:\\
        An Empirical Study of LLM-Assisted Metaprogramming Strategies}
 
-\author{
-  % Authors here
-}
+\author{Silvère Gangloff\inst{1} \and Jan Hula\inst{1} \and Miroslav Olšák\inst{2}}
 
-\date{}
+\institute{
+  National Supercomputing Centre IT4Innovations, IRAFM,\\
+  University of Ostrava, 30.~dubna~22, 70103 Ostrava, Czech Republic\\
+  \email{\{silvere.gangloff, jan.hula\}@osu.cz}
+  \and
+  Czech Institute of Informatics, Robotics and Cybernetics,\\
+  Czech Technical University in Prague\\
+  \email{miroslav.olsak@cvut.cz}
+}
 
 \begin{document}
 
@@ -76,6 +76,9 @@ API names, deprecated lemmas, elaboration-order pitfalls, and
 \texttt{whnf}-unfolding surprises---and describe the specification-first
 pipeline that underlies all successful conditions.
 \end{abstract}
+
+\keywords{Lean 4 \and tactic generation \and large language models \and
+metaprogramming \and LLM-assisted formal methods \and LSP feedback}
 
 %%% ============================================================
 \section{Introduction}
@@ -621,7 +624,7 @@ approach generalises to tactics requiring deeper mathematical reasoning than
 pattern matching.
 
 %%% ============================================================
-\bibliographystyle{plain}
+\bibliographystyle{splncs04}
 \begin{thebibliography}{9}
 
 \bibitem{xia2024legoprover}
