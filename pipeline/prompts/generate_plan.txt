@@ -1,0 +1,45 @@
+You are an expert Lean 4 developer specializing in metaprogramming and tactic development.
+
+Given the following tactic specification, generate an incremental refinement plan for implementing the tactic step by step in Lean 4.
+
+## Tactic Specification:
+{specification}
+
+## Your Task:
+Generate an incremental milestone plan with the following structure.
+
+---
+
+**First line**: `{tactic_name} — Incremental Refinement Plan`
+
+**Philosophy section**: 2–4 sentences describing what the tactic does, the monotonic refinement invariant (each milestone strictly adds capability without breaking earlier tests), and any key design constraints to enforce throughout development.
+
+**Milestones (8–12 total)**: Each milestone follows this format:
+
+```
+Milestone N — Name
+--------------------------------------------------
+New capability:
+<What new goals can be proved after this milestone. Give 1–3 concrete Lean 4 example goals.>
+
+Key lemma(s): (omit section if not applicable)
+- `lemma_name` : brief description
+
+Implementation:
+- Step-by-step implementation notes
+```
+
+Rules for milestones:
+- Milestone 1 is always the "skeleton": the tactic compiles, matches the goal shape, and fails with a clear informative message for unsupported goals. This establishes the dispatcher architecture used in all later milestones.
+- Milestones 2–(N-2): each adds one new algebraic/structural rule or fallback, in order of increasing complexity.
+- Second-to-last milestone: add guardrails (depth limits, clear error messages for edge cases).
+- Last milestone: architecture cleanup and internal refactor — no new mathematical capability, only code quality.
+- Use specific Mathlib lemma names where possible (e.g., `mul_ne_zero`, `pow_ne_zero`, `ne_of_gt`).
+- Keep each milestone tightly scoped to a single new capability.
+
+**Summary table**: End with a markdown table:
+
+| # | Milestone | New Capability |
+|---|-----------|----------------|
+| 1 | Name | ... |
+...

@@ -34,6 +34,9 @@ lake build
 
 ## Pipeline Commands (run from project root)
 
+The pipeline generates a `.spec.md` and `.plan.md` for each tactic description.
+Output is written to `output/`. No Lean compilation occurs.
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -41,22 +44,17 @@ pip install -r requirements.txt
 # Single tactic
 python pipeline/main.py "tactic description"
 python pipeline/main.py --provider openrouter --model google/gemini-pro "tactic description"
+python pipeline/main.py -f request.txt
 
 # Batch mode
 python pipeline/main.py --batch pipeline/specifications.json
 python pipeline/main.py --batch pipeline/specifications.json --only Tendsto Nonzero
-python pipeline/main.py --batch pipeline/specifications.json --skip RewriteAC --report results.json
-
-# Update mode (add tests to existing tactic)
-python pipeline/main.py --update output/my_tactic.lean
-python pipeline/main.py --update output/my_tactic.lean --add-tests 10
+python pipeline/main.py --batch pipeline/specifications.json --skip RewriteAC
 ```
 
 ## Pipeline Configuration
 
 - `--provider anthropic|openai|openrouter`
 - `--model NAME` (e.g. `google/gemini-pro`, `meta-llama/llama-3-70b-instruct`)
-- `--mathlib` — enable Mathlib imports
-- `--max-rounds N` — repair attempts
-- `--batch FILE` / `--only` / `--skip` / `--report FILE`
-- `--update FILE` / `--add-tests N`
+- `--batch FILE` / `--only` / `--skip`
+- `--output-dir DIR` (default: `output`)

@@ -1,8 +1,22 @@
 # Pipeline
 
-The Python pipeline generates Lean 4 tactics from informal natural language descriptions.
-It corresponds to **Conditions A and B** of the 2×2 study: API-based generation with a
-self-correction loop (no live LSP access).
+The pipeline generates two preparation artefacts from an informal tactic description:
+a structured **specification** and an incremental **milestone plan**. These are used
+to prepare Claude Code sessions for the 2×2 study (Conditions B and D).
+
+The pipeline does **not** attempt to compile or implement tactics. All interactive
+work — writing Lean code, calling LSP tools, fixing errors — happens inside Claude Code.
+
+---
+
+## What the pipeline produces
+
+For each tactic description, the pipeline writes two files to `output/`:
+
+| File | Content |
+|------|---------|
+| `{name}.spec.md` | Structured spec: name, scope analysis, mathematical characterisation, algorithm, success criteria, edge cases, dependencies |
+| `{name}.plan.md` | Incremental milestone plan: 8–12 milestones, each with new capability, example Lean goals, key Mathlib lemmas, and implementation notes |
 
 ---
 
@@ -13,43 +27,19 @@ User request (string)
         │
         ▼
 ┌─────────────────┐
-│  1. Analyze     │  analyze_request.txt  →  structured spec (TacticSpec)
+│  1. Analyze     │  analyze_request.txt  →  structured spec
 └────────┬────────┘
-         │
+         │  save  →  output/{name}.spec.md
          ▼
 ┌─────────────────┐
-│  2. Test Algo   │  generate_test_algorithm.txt  →  test enumeration strategy
+│  2. Plan        │  generate_plan.txt  →  milestone plan
 └────────┬────────┘
-         │
+         │  save  →  output/{name}.plan.md
          ▼
-┌─────────────────┐
-│  3. Generate    │  generate_tactic.txt  →  Lean 4 metaprogramming code
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  4. Tests       │  generate_tests.txt  →  N theorem statements
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  5. Validate    │  lake env lean <file>  →  errors / success
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │ errors? │
-    └────┬────┘
-    yes  │  no
-         │   └──→  save .lean + .spec.md  →  done
-         ▼
-┌─────────────────┐
-│  6. Repair      │  fix_errors.txt  →  corrected code  (up to N rounds)
-└────────┬────────┘
-         └──→  back to Validate
+        done
 ```
 
-**Note**: Conditions C and D of the study use Claude Code with live LSP tools instead
-of this pipeline. The pipeline implements the non-LSP path (A and B).
+Two LLM calls total. No Lean compilation.
 
 ---
 
@@ -59,9 +49,8 @@ of this pipeline. The pipeline implements the non-LSP path (A and B).
 
 | File | Role |
 |------|------|
-| `generator.py` | Orchestrator — runs the 6-stage pipeline, handles single/batch/update modes |
-| `validator.py` | Calls `lake env lean` on a temp file, parses errors and warnings |
-| `config.py` | `Config` dataclass: provider, model, mathlib flag, repair rounds, output dir |
+| `generator.py` | Orchestrator — runs the 2-stage pipeline, handles single and batch modes |
+| `config.py` | `Config` dataclass: provider, model, output dir |
 
 ### Models (`models/`)
 
@@ -79,17 +68,10 @@ API keys are read from environment variables (`ANTHROPIC_API_KEY` etc.) or from
 
 ### Prompts (`prompts/`)
 
-Each prompt is a plain-text template loaded at runtime:
-
 | File | Stage | Purpose |
 |------|-------|---------|
 | `analyze_request.txt` | 1 | Extract structured spec from informal description |
-| `generate_test_algorithm.txt` | 2 | Describe how to enumerate test cases systematically |
-| `generate_tactic.txt` | 3 | Generate Lean 4 metaprogramming code |
-| `generate_tests.txt` | 4 | Instantiate N test theorems from the algorithm |
-| `fix_errors.txt` | 6 | Repair code given compiler error messages |
-| `generate_additional_tests.txt` | update | Generate new tests without duplicating existing ones |
-| `update_tactic.txt` | update | Extend tactic to handle new test cases |
+| `generate_plan.txt` | 2 | Generate incremental milestone plan from spec |
 | `split_specifications.txt` | batch | Detect if one spec describes multiple tactics |
 
 ---
@@ -98,18 +80,15 @@ Each prompt is a plain-text template loaded at runtime:
 
 ```bash
 # Single tactic
-python main.py "description"
-python main.py --mathlib --provider anthropic "description"
-python main.py --provider openrouter --model google/gemini-pro "description"
+python pipeline/main.py "A tactic that proves nonzero goals"
+python pipeline/main.py --provider anthropic "..."
+python pipeline/main.py --provider openrouter --model google/gemini-pro "..."
+python pipeline/main.py -f request.txt
 
 # Batch (from specifications.json)
-python main.py --batch specifications.json --mathlib
-python main.py --batch specifications.json --only TacticA TacticB
-python main.py --batch specifications.json --report results.json
-
-# Update existing tactic
-python main.py --update output/my_tactic.lean
-python main.py --update output/my_tactic.lean --add-tests 10 --max-rounds 6
+python pipeline/main.py --batch pipeline/specifications.json
+python pipeline/main.py --batch pipeline/specifications.json --only TacticA TacticB
+python pipeline/main.py --batch pipeline/specifications.json --skip RewriteAC
 ```
 
 ---

@@ -10,6 +10,9 @@ openai_key.txt
 openrouter_key.txt
 
 TODO.txt
+TODO.md
+suggestions.md
+advanced_suggestions.md
 
 # LaTeX build artifacts
 *.aux

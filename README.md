@@ -31,25 +31,37 @@ experiments/
 
 ### I want to run the pipeline
 
+The pipeline prepares interactive Claude Code sessions. Given an
+informal tactic description, it produces two artefacts:
+
+1. **Specification** (`.spec.md`) — a structured analysis of the tactic: name, scope,
+   mathematical characterisation, algorithm, success criteria, edge cases, and dependencies.
+2. **Milestone plan** (`.plan.md`) — an incremental refinement plan with 8–12 milestones.
+   Each milestone names the new capability, gives concrete Lean 4 example goals, cites
+   relevant Mathlib lemmas, and describes the implementation step. The researcher then
+   works through the plan milestone by milestone inside Claude Code with live LSP access.
+
+The pipeline makes two LLM calls — one per artefact — and writes both files to `output/`.
+No Lean compilation happens; all interactive work is done in Claude Code.
+
 ```bash
 # Setup
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY="your-key"   # or OPENAI_API_KEY, OPENROUTER_API_KEY
 
-# Generate a tactic from a description
-python pipeline/main.py "Create a tactic that proves Tendsto goals by continuity"
-
-# With Mathlib, explicit model
-python pipeline/main.py --mathlib --provider anthropic "..."
+# Single tactic
+python pipeline/main.py "A tactic that proves nonzero goals"
 python pipeline/main.py --provider openrouter --model google/gemini-pro "..."
+python pipeline/main.py -f request.txt
 
 # Batch mode (from specifications.json)
-python pipeline/main.py --batch pipeline/specifications.json --mathlib
-
-# Add tests to an existing tactic
-python pipeline/main.py --update output/my_tactic.lean --add-tests 10
+python pipeline/main.py --batch pipeline/specifications.json
+python pipeline/main.py --batch pipeline/specifications.json --only Tendsto Nonzero
+python pipeline/main.py --batch pipeline/specifications.json --skip RewriteAC
 ```
+
+Output files are written to `output/<tactic_name>.spec.md` and `output/<tactic_name>.plan.md`.
 
 See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 
@@ -75,29 +87,30 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 │   │
 │   ├── limit_auto/              ← 2×2 study (main paper contribution)
 │   │   ├── spec.md              ← shared specification for all 4 conditions
+│   │   ├── plan.md              ← milestone plan (used in Conditions B and D)
 │   │   ├── README.md            ← study design and condition descriptions
-│   │   ├── one_run/             ← Condition A: no plan, no LSP (baseline)
-│   │   ├── plan_without_lsp/    ← Condition B: plan, no LSP (5 milestones)
+│   │   ├── one_shot_no_lsp/     ← Condition A: no plan, no LSP (baseline)
+│   │   ├── plan_without_lsp/    ← Condition B: plan, no LSP
 │   │   ├── one_shot_with_lsp/   ← Condition C: no plan, with LSP
-│   │   └── plan_with_lsp/       ← Condition D: plan + LSP (9 milestones, best)
-│   │       └── lsp_log.md       ← full record of LSP tool calls
+│   │   └── plan_with_lsp/       ← Condition D: plan + LSP (best)
 │   │
 │   └── other_tactics/
 │       ├── README.md
 │       ├── decide_list_theory/  ← second complete tactic (LSP-guided)
-│       └── specs/               ← 12 drafted specifications (future work)
+│       ├── specs/               ← 12 drafted specifications
+│       └── plans/               ← milestone plans for each spec (pipeline output)
 │
 ├── pipeline/
 │   ├── README.md
 │   ├── main.py             ← CLI entry point
 │   ├── specifications.json ← tactic descriptions for batch mode
-│   ├── config.py           ← configuration (provider, model, flags)
-│   ├── generator.py        ← pipeline orchestrator
-│   ├── validator.py        ← Lake compilation wrapper
+│   ├── config.py           ← configuration (provider, model, output dir)
+│   ├── generator.py        ← pipeline orchestrator (spec + plan generation)
 │   ├── models/             ← LLM provider wrappers (Anthropic, OpenAI, OpenRouter)
-│   ├── prompts/            ← prompt templates (analyze, generate, test, fix, ...)
+│   ├── prompts/            ← prompt templates (analyze_request, generate_plan, split_specifications)
 │   └── legacy/             ← earlier approaches (see pipeline/legacy/README.md)
 │
+├── output/                 ← pipeline output: *.spec.md and *.plan.md files
 ├── requirements.txt        ← Python dependencies (anthropic, openai)
 ├── lakefile.toml           ← Lean 4 project configuration (Mathlib dependency)
 ├── lean-toolchain          ← pinned Lean version
@@ -136,9 +149,3 @@ lake build
 
 The project requires Mathlib (pinned via `lake-manifest.json`). Build time for Mathlib
 is ~30 minutes on first run; subsequent builds are cached.
-
----
-
-## Citing
-
-> [paper citation placeholder — fill in after submission]
