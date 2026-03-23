@@ -12,21 +12,13 @@ milestone plans, live LSP feedback — make generation reliable.
 
 ## Navigating the Repository
 
-### I want to read the paper or study plan
-
-```
-paper/
-  main.tex          ← LaTeX draft
-  paper_plan.md     ← section outline, evidence table, key claims
-```
-
 ### I want to understand the experiments
 
 ```
 experiments/
-  intuitionistic_pilot/     ← Section 3: pilot experiment (propositional logic tactic)
-  limit_auto/               ← Section 4: main 2×2 study
-  other_tactics/            ← Section 7: future work (decide_list_theory + 12 specs)
+  intuitionistic_pilot/     ← pilot experiment (propositional logic tactic)
+  limit_auto/               ← main 2×2 study
+  other_tactics/            ← future work (decide_list_theory + 12 specs)
 ```
 
 ### I want to run the pipeline
@@ -74,10 +66,6 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 ├── README.md               ← this file
 ├── CLAUDE.md               ← project instructions for Claude Code
 │
-├── paper/
-│   ├── main.tex            ← paper draft (LaTeX, ITP short paper)
-│   └── paper_plan.md       ← section outline and evidence table
-│
 ├── experiments/
 │   ├── intuitionistic_pilot/
 │   │   ├── README.md
@@ -85,7 +73,7 @@ See [`pipeline/README.md`](pipeline/README.md) for architecture details.
 │   │   ├── gpt5_iterations/          ← 13 GPT-5 iterations (iterative approach)
 │   │   └── formula_enumeration/      ← Julia: propositional formula enumeration (background)
 │   │
-│   ├── limit_auto/              ← 2×2 study (main paper contribution)
+│   ├── limit_auto/              ← 2×2 study (main contribution)
 │   │   ├── spec.md              ← shared specification for all 4 conditions
 │   │   ├── plan.md              ← milestone plan (used in Conditions B and D)
 │   │   ├── README.md            ← study design and condition descriptions

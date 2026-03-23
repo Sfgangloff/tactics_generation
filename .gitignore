@@ -15,6 +15,7 @@ suggestions.md
 advanced_suggestions.md
 paper/
 reports/
+CITATION.cff
 
 # LaTeX build artifacts
 *.aux
