@@ -124,3 +124,20 @@ This is itself a result: a raw one-shot with no scaffolding produces nothing usa
 | Condition D output | `experiments/limit_auto/plan_with_lsp/milestone9.lean` |
 | LSP interaction log | `experiments/limit_auto/plan_with_lsp/lsp_log.md` |
 | Pilot tactic | `experiments/intuitionistic_pilot/` |
+
+---
+
+## TODO / Remaining Work
+
+### Experiments
+
+- [ ] **nonzero Condition D** (plan + LSP) — run SESSION_BRIEF_D.md, write notes.md + report
+- [ ] **nonzero Condition A** (no plan, no LSP) — expected to fail; run, document, write report
+- [ ] **nonzero Condition B** (plan, no LSP) — run SESSION_BRIEF_B.md, write notes.md + report
+
+### Paper writing
+
+- [ ] Write `paper/main.tex` sections (currently vibe-coded draft needs replacing with actual results)
+- [ ] Add annex with prompts given to the model — extract from SESSION_BRIEF files (or notes.md
+  if prompts are recorded there); document verbatim prompts for all conditions of all tactics
+  so reviewers can replicate. Check first whether prompts are already in the LaTeX draft.

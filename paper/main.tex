@@ -383,9 +383,16 @@ self-correction loop did not converge within the repair budget.
 As noted above, this failure is ambiguous: it may reflect the limitations of the
 automated pipeline scaffolding (no interactive context, fixed repair budget),
 the model's inability to synthesize metaprogramming code from a bare spec, or both.
-What is clear is that the combination of no planning, no LSP access, and no interactive
-human guidance produced nothing useful, confirming that bare automated generation
-is not a viable strategy for tactic synthesis.
+To resolve this ambiguity, we ran a fifth condition informally called \textbf{Condition~E}:
+the same task (no plan, no LSP) in an \emph{interactive} Claude Code session, eliminating
+the pipeline as a confounding factor.
+Condition~E produced 336 lines of code, but with a syntax error that prevented the tactic
+from registering; all 13 test invocations failed with ``Tactic \texttt{limitAuto} has not
+been implemented'' (0/13 pass).
+This confirms that the failure in Condition~A is due to the \emph{absence of LSP feedback},
+not the automated pipeline scaffolding.
+Together, Conditions~A and~E establish the baseline: without live compiler access, neither
+pipeline-driven nor interactive generation produces a working tactic.
 
 \paragraph{Condition B.}
 The milestone plan (five milestones) gave the model a structured decomposition
